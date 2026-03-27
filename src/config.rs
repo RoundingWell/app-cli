@@ -12,6 +12,8 @@ pub struct Config {
     pub profiles: HashMap<String, Profile>,
     #[serde(default)]
     pub authentication: HashMap<String, AuthEntry>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_profile: Option<String>,
 }
 
 /// A named profile linking a profile name to an organization + stage.
@@ -38,8 +40,8 @@ pub struct BasicCredentials {
 
 /// Returns the path to the config file: `~/.config/rw/profiles.json`.
 pub fn config_path() -> Result<PathBuf> {
-    let config_dir = dirs::config_dir().context("could not determine config directory")?;
-    Ok(config_dir.join("rw").join("profiles.json"))
+    let home = dirs::home_dir().context("could not determine home directory")?;
+    Ok(home.join(".config").join("rw").join("profiles.json"))
 }
 
 /// Loads the configuration from disk, returning a default empty config if the
@@ -70,22 +72,21 @@ pub fn save_config(config: &Config) -> Result<()> {
     Ok(())
 }
 
-/// Resolves the effective organization and stage, taking `--profile` into
-/// account when specified.
-pub fn resolve_org_and_stage(
-    config: &Config,
-    organization: &str,
-    stage: &Stage,
-    profile: Option<&str>,
-) -> Result<(String, Stage)> {
-    if let Some(name) = profile {
+/// Resolves the effective profile name, organization, and stage.
+/// Uses `--profile` if given, then `default_profile` from config.
+/// Returns an error if neither is set.
+pub fn resolve_profile(config: &Config, profile: Option<&str>) -> Result<(String, String, Stage)> {
+    let effective_profile = profile.or(config.default_profile.as_deref());
+    if let Some(name) = effective_profile {
         let p = config
             .profiles
             .get(name)
             .with_context(|| format!("profile \"{}\" not found in config", name))?;
-        Ok((p.organization.clone(), p.stage.clone()))
+        Ok((name.to_string(), p.organization.clone(), p.stage.clone()))
     } else {
-        Ok((organization.to_string(), stage.clone()))
+        anyhow::bail!(
+            "no profile selected; run `rw profile <name>` to set a default, or pass --profile"
+        )
     }
 }
 
@@ -104,7 +105,7 @@ mod tests {
             },
         );
         config.authentication.insert(
-            "demonstration".to_string(),
+            "demo".to_string(),
             AuthEntry::Bearer {
                 bearer: "token123".to_string(),
             },
@@ -112,7 +113,7 @@ mod tests {
         let json = serde_json::to_string_pretty(&config).unwrap();
         let loaded: Config = serde_json::from_str(&json).unwrap();
         assert_eq!(loaded.profiles["demo"].organization, "demonstration");
-        match &loaded.authentication["demonstration"] {
+        match &loaded.authentication["demo"] {
             AuthEntry::Bearer { bearer } => assert_eq!(bearer, "token123"),
             _ => panic!("expected bearer auth"),
         }
@@ -128,18 +129,32 @@ mod tests {
                 stage: Stage::Prod,
             },
         );
-        let (org, stage) =
-            resolve_org_and_stage(&config, "other", &Stage::Dev, Some("demo")).unwrap();
+        let (profile, org, stage) = resolve_profile(&config, Some("demo")).unwrap();
+        assert_eq!(profile, "demo");
         assert_eq!(org, "demonstration");
         assert_eq!(stage, Stage::Prod);
     }
 
     #[test]
-    fn test_resolve_org_no_profile() {
-        let config = Config::default();
-        let (org, stage) =
-            resolve_org_and_stage(&config, "myorg", &Stage::Sandbox, None).unwrap();
-        assert_eq!(org, "myorg");
+    fn test_resolve_default_profile() {
+        let mut config = Config::default();
+        config.profiles.insert(
+            "demo".to_string(),
+            Profile {
+                organization: "demonstration".to_string(),
+                stage: Stage::Sandbox,
+            },
+        );
+        config.default_profile = Some("demo".to_string());
+        let (profile, org, stage) = resolve_profile(&config, None).unwrap();
+        assert_eq!(profile, "demo");
+        assert_eq!(org, "demonstration");
         assert_eq!(stage, Stage::Sandbox);
+    }
+
+    #[test]
+    fn test_resolve_no_profile_errors() {
+        let config = Config::default();
+        assert!(resolve_profile(&config, None).is_err());
     }
 }
