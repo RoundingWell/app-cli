@@ -1,0 +1,162 @@
+use clap::{Parser, Subcommand, Args, ValueEnum};
+
+/// Validate that a string is a valid slug matching `^[a-z][a-z0-9-]*[a-z0-9]$`.
+pub fn validate_slug(s: &str) -> Result<String, String> {
+    if s.len() < 2 {
+        return Err(format!(
+            "\"{}\" is too short; slugs must be at least 2 characters",
+            s
+        ));
+    }
+    let is_valid = is_valid_slug(s);
+    if is_valid {
+        Ok(s.to_string())
+    } else {
+        Err(format!(
+            "\"{}\" is not a valid slug; must match ^[a-z][a-z0-9-]*[a-z0-9]$",
+            s
+        ))
+    }
+}
+
+fn is_valid_slug(s: &str) -> bool {
+    let chars: Vec<char> = s.chars().collect();
+    if chars.is_empty() {
+        return false;
+    }
+    // First char must be lowercase letter
+    if !chars[0].is_ascii_lowercase() {
+        return false;
+    }
+    // Last char must be lowercase letter or digit
+    let last = *chars.last().unwrap();
+    if !last.is_ascii_lowercase() && !last.is_ascii_digit() {
+        return false;
+    }
+    // All chars must be lowercase letter, digit, or hyphen
+    for &c in &chars {
+        if !c.is_ascii_lowercase() && !c.is_ascii_digit() && c != '-' {
+            return false;
+        }
+    }
+    true
+}
+
+/// Stage value for the --stage global option.
+#[derive(Debug, Clone, ValueEnum, serde::Serialize, serde::Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum Stage {
+    Prod,
+    Sandbox,
+    Qa,
+    Dev,
+}
+
+impl std::fmt::Display for Stage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Stage::Prod => write!(f, "prod"),
+            Stage::Sandbox => write!(f, "sandbox"),
+            Stage::Qa => write!(f, "qa"),
+            Stage::Dev => write!(f, "dev"),
+        }
+    }
+}
+
+/// The RoundingWell command line interface.
+#[derive(Parser, Debug)]
+#[command(name = "rw", about = "RoundingWell CLI", version)]
+pub struct Cli {
+    /// Organization name (slug).
+    #[arg(
+        short = 'o',
+        long,
+        default_value = "demonstration",
+        value_parser = validate_slug,
+        global = true
+    )]
+    pub organization: String,
+
+    /// Stage name.
+    #[arg(short = 's', long, default_value = "prod", global = true)]
+    pub stage: Stage,
+
+    /// Profile name. Overrides --organization and --stage when set.
+    #[arg(short = 'p', long, value_parser = validate_slug, global = true)]
+    pub profile: Option<String>,
+
+    #[command(subcommand)]
+    pub command: Commands,
+}
+
+/// Top-level subcommands.
+#[derive(Subcommand, Debug)]
+pub enum Commands {
+    /// Authenticate with RoundingWell.
+    Auth(AuthArgs),
+    /// Make an API request.
+    Api(ApiArgs),
+}
+
+/// Arguments for the `auth` subcommand.
+#[derive(Args, Debug)]
+pub struct AuthArgs {
+    #[command(subcommand)]
+    pub command: AuthCommands,
+}
+
+/// Subcommands for `auth`.
+#[derive(Subcommand, Debug)]
+pub enum AuthCommands {
+    /// Log in to RoundingWell.
+    Login,
+    /// Show current authentication status.
+    Status,
+    /// Log out and remove stored credentials.
+    Logout,
+}
+
+/// Arguments for the `api` subcommand.
+#[derive(Args, Debug)]
+pub struct ApiArgs {
+    /// API endpoint path (e.g., "clinicians").
+    pub endpoint: String,
+
+    /// HTTP method to use.
+    #[arg(short = 'X', long = "method", default_value = "GET")]
+    pub method: String,
+
+    /// Additional HTTP headers (e.g., "Accept: application/json").
+    #[arg(short = 'H', long = "header")]
+    pub headers: Vec<String>,
+
+    /// Request body fields as key=value pairs (implies POST if no method set).
+    #[arg(short = 'f', long = "field")]
+    pub fields: Vec<String>,
+
+    /// Output raw JSON without pretty-printing.
+    #[arg(long)]
+    pub raw: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_valid_slugs() {
+        assert!(validate_slug("demonstration").is_ok());
+        assert!(validate_slug("my-org").is_ok());
+        assert!(validate_slug("org123").is_ok());
+        assert!(validate_slug("ab").is_ok());
+    }
+
+    #[test]
+    fn test_invalid_slugs() {
+        assert!(validate_slug("a").is_err()); // too short
+        assert!(validate_slug("My-Org").is_err()); // uppercase
+        assert!(validate_slug("-org").is_err()); // starts with hyphen
+        assert!(validate_slug("org-").is_err()); // ends with hyphen
+        assert!(validate_slug("org_name").is_err()); // underscore not allowed
+    }
+}
