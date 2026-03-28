@@ -24,8 +24,11 @@ async fn main() -> Result<()> {
                 AuthCommands::Login => {
                     commands::auth::login(&profile, &organization, &stage).await?;
                 }
-                AuthCommands::Status { show } => {
-                    commands::auth::status(&profile, &organization, &stage, show)?;
+                AuthCommands::Status => {
+                    commands::auth::status(&profile, &organization, &stage)?;
+                }
+                AuthCommands::Header => {
+                    commands::auth::header(&organization, &stage).await?;
                 }
                 AuthCommands::Logout => {
                     commands::auth::logout(&profile, &organization, &stage)?;

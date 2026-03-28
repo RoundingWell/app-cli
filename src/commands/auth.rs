@@ -176,14 +176,9 @@ pub async fn login(profile: &str, organization: &str, stage: &Stage) -> Result<(
 }
 
 /// Run `rw auth status` – report whether stored credentials exist.
-/// When `show` is true, print the raw credential value.
-pub fn status(profile: &str, organization: &str, stage: &Stage, show: bool) -> Result<()> {
+pub fn status(profile: &str, organization: &str, stage: &Stage) -> Result<()> {
     match load_auth_cache(organization, stage)? {
-        Some(
-            ref cache @ AuthCache::Bearer {
-                ref access_token, ..
-            },
-        ) => {
+        Some(ref cache @ AuthCache::Bearer { .. }) => {
             if cache.is_expired() {
                 println!(
                     "✓ Authenticated using profile \"{}\" (bearer token, expired – will refresh on next use).",
@@ -195,23 +190,43 @@ pub fn status(profile: &str, organization: &str, stage: &Stage, show: bool) -> R
                     profile
                 );
             }
-            if show {
-                println!("  token: {}", access_token);
-            }
         }
-        Some(AuthCache::Basic { username, password }) => {
+        Some(AuthCache::Basic { username, .. }) => {
             println!(
                 "✓ Authenticated using profile \"{}\" (basic, user: {}).",
                 profile, username
             );
-            if show {
-                println!("  username: {}", username);
-                println!("  password: {}", password);
-            }
         }
         None => {
             println!("✗ Not authenticated for profile \"{}\".", profile);
             println!("  Run `rw auth login` to authenticate.");
+        }
+    }
+    Ok(())
+}
+
+/// Returns the Authorization header value for the given resolved credentials.
+pub fn auth_header_value(auth: &ResolvedAuth) -> String {
+    use base64::{engine::general_purpose::STANDARD, Engine};
+    match auth {
+        ResolvedAuth::Bearer(token) => format!("Bearer {}", token),
+        ResolvedAuth::Basic { username, password } => {
+            let encoded = STANDARD.encode(format!("{}:{}", username, password));
+            format!("Basic {}", encoded)
+        }
+    }
+}
+
+/// Run `rw auth header` – print the Authorization header value for API requests.
+/// For bearer tokens, prints `Bearer <token>` (refreshing if expired).
+/// For basic credentials, prints `Basic <base64(username:password)>`.
+pub async fn header(organization: &str, stage: &Stage) -> Result<()> {
+    match resolve_auth(organization, stage).await? {
+        Some(ref auth) => {
+            println!("{}", auth_header_value(auth));
+        }
+        None => {
+            anyhow::bail!("not authenticated – run `rw auth login` first");
         }
     }
     Ok(())
@@ -309,4 +324,36 @@ async fn try_refresh(stage: &Stage, refresh_token: &str) -> Result<AuthCache> {
         refresh_token: token.refresh_token,
         expires_at: expires_at_from_duration(token.expires_in),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_auth_header_value_bearer() {
+        let auth = ResolvedAuth::Bearer("mytoken123".to_string());
+        assert_eq!(auth_header_value(&auth), "Bearer mytoken123");
+    }
+
+    #[test]
+    fn test_auth_header_value_basic() {
+        let auth = ResolvedAuth::Basic {
+            username: "alice".to_string(),
+            password: "secret".to_string(),
+        };
+        // base64("alice:secret") = "YWxpY2U6c2VjcmV0"
+        assert_eq!(auth_header_value(&auth), "Basic YWxpY2U6c2VjcmV0");
+    }
+
+    #[test]
+    fn test_auth_header_value_basic_special_chars() {
+        let auth = ResolvedAuth::Basic {
+            username: "user@example.com".to_string(),
+            password: "p@ss:word".to_string(),
+        };
+        use base64::{engine::general_purpose::STANDARD, Engine};
+        let expected = format!("Basic {}", STANDARD.encode("user@example.com:p@ss:word"));
+        assert_eq!(auth_header_value(&auth), expected);
+    }
 }
