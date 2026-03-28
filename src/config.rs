@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use crate::cli::Stage;
 
-/// Root configuration file structure for `~/.config/rw/profiles.json`.
+/// Root configuration file structure for `~/.config/rw/config.json`.
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct Config {
     #[serde(rename = "default", default, skip_serializing_if = "Option::is_none")]
@@ -21,10 +21,10 @@ pub struct Profile {
     pub stage: Stage,
 }
 
-/// Returns the path to the config file: `~/.config/rw/profiles.json`.
+/// Returns the path to the config file: `~/.config/rw/config.json`.
 pub fn config_path() -> Result<PathBuf> {
     let home = dirs::home_dir().context("could not determine home directory")?;
-    Ok(home.join(".config").join("rw").join("profiles.json"))
+    Ok(home.join(".config").join("rw").join("config.json"))
 }
 
 /// Loads the configuration from disk, returning a default empty config if the
@@ -64,7 +64,7 @@ pub fn load_config() -> Result<Config> {
     Ok(config)
 }
 
-/// Persists the configuration to `~/.config/rw/profiles.json`, creating
+/// Persists the configuration to `~/.config/rw/config.json`, creating
 /// parent directories as needed.
 pub fn save_config(config: &Config) -> Result<()> {
     let path = config_path()?;
