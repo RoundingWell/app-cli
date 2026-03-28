@@ -1,8 +1,9 @@
 use anyhow::{bail, Context, Result};
+use jaq_core::load::{Arena, File, Loader};
+use jaq_core::{data, unwrap_valr, Compiler, Ctx, Vars};
+use jaq_json::{read, Val};
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use std::collections::HashMap;
-use std::io::Write;
-use std::process::{Command, Stdio};
 
 use crate::config::{AuthEntry, Config};
 
@@ -106,31 +107,55 @@ pub async fn run(
     Ok(())
 }
 
-/// Pipe `json` through `jq` with the given filter and return the output.
-fn apply_jq(filter: &str, json: &str) -> Result<String> {
-    let mut child = Command::new("jq")
-        .arg(filter)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .context("failed to run jq; is it installed?")?;
+/// Apply a jq filter expression to `json` using the `jaq-core` library.
+fn apply_jq(filter_str: &str, json: &str) -> Result<String> {
+    let input = read::parse_single(json.as_bytes())
+        .map_err(|e| anyhow::anyhow!("jq: invalid JSON input: {e}"))?;
 
-    child
-        .stdin
-        .take()
-        .unwrap()
-        .write_all(json.as_bytes())
-        .context("failed to write to jq stdin")?;
+    let program = File {
+        code: filter_str,
+        path: (),
+    };
 
-    let output = child.wait_with_output().context("failed to wait for jq")?;
+    let defs = jaq_core::defs()
+        .chain(jaq_std::defs())
+        .chain(jaq_json::defs());
+    let funs = jaq_core::funs()
+        .chain(jaq_std::funs())
+        .chain(jaq_json::funs());
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        bail!("jq: {}", stderr.trim());
+    let loader = Loader::new(defs);
+    let arena = Arena::default();
+
+    let modules = loader
+        .load(&arena, program)
+        .map_err(|errs| anyhow::anyhow!("jq: {}", format_load_errors(errs)))?;
+
+    let filter = Compiler::default()
+        .with_funs(funs)
+        .compile(modules)
+        .map_err(|errs| anyhow::anyhow!("jq: {errs:?}"))?;
+
+    let ctx = Ctx::<data::JustLut<Val>>::new(&filter.lut, Vars::new([]));
+    let out = filter.id.run((ctx, input)).map(unwrap_valr);
+
+    let mut output = String::new();
+    for result in out {
+        let val = result.map_err(|e| anyhow::anyhow!("jq: {e}"))?;
+        if !output.is_empty() {
+            output.push('\n');
+        }
+        output.push_str(&val.to_string());
+    }
+    if !output.is_empty() {
+        output.push('\n');
     }
 
-    String::from_utf8(output.stdout).context("jq output was not valid UTF-8")
+    Ok(output)
+}
+
+fn format_load_errors<E: std::fmt::Debug>(errs: E) -> String {
+    format!("{errs:?}")
 }
 
 /// Parse a raw `"Name: value"` header string into typed header components.
@@ -190,5 +215,33 @@ mod tests {
     #[test]
     fn test_parse_field_invalid() {
         assert!(parse_field("no-equals").is_err());
+    }
+
+    #[test]
+    fn test_apply_jq_identity() {
+        let result = apply_jq(".", r#"{"a":1}"#).unwrap();
+        assert_eq!(result.trim(), r#"{"a":1}"#);
+    }
+
+    #[test]
+    fn test_apply_jq_field_access() {
+        let result = apply_jq(".name", r#"{"name":"Alice"}"#).unwrap();
+        assert_eq!(result.trim(), r#""Alice""#);
+    }
+
+    #[test]
+    fn test_apply_jq_array_iterator() {
+        let result = apply_jq(".[]", r#"[1,2,3]"#).unwrap();
+        assert_eq!(result.trim(), "1\n2\n3");
+    }
+
+    #[test]
+    fn test_apply_jq_invalid_filter() {
+        assert!(apply_jq("invalid!!!", "{}").is_err());
+    }
+
+    #[test]
+    fn test_apply_jq_invalid_json() {
+        assert!(apply_jq(".", "not-json").is_err());
     }
 }
