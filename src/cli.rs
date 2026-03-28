@@ -1,4 +1,4 @@
-use clap::{Parser, Subcommand, Args, ValueEnum};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 
 /// Validate that a string is a valid slug matching `^[a-z][a-z0-9-]*[a-z0-9]$`.
 pub fn validate_slug(s: &str) -> Result<String, String> {
@@ -50,6 +50,7 @@ pub enum Stage {
     Sandbox,
     Qa,
     Dev,
+    Local,
 }
 
 impl std::fmt::Display for Stage {
@@ -59,6 +60,7 @@ impl std::fmt::Display for Stage {
             Stage::Sandbox => write!(f, "sandbox"),
             Stage::Qa => write!(f, "qa"),
             Stage::Dev => write!(f, "dev"),
+            Stage::Local => write!(f, "local"),
         }
     }
 }
@@ -67,21 +69,7 @@ impl std::fmt::Display for Stage {
 #[derive(Parser, Debug)]
 #[command(name = "rw", about = "RoundingWell CLI", version)]
 pub struct Cli {
-    /// Organization name (slug).
-    #[arg(
-        short = 'o',
-        long,
-        default_value = "demonstration",
-        value_parser = validate_slug,
-        global = true
-    )]
-    pub organization: String,
-
-    /// Stage name.
-    #[arg(short = 's', long, default_value = "prod", global = true)]
-    pub stage: Stage,
-
-    /// Profile name. Overrides --organization and --stage when set.
+    /// Profile name.
     #[arg(short = 'p', long, value_parser = validate_slug, global = true)]
     pub profile: Option<String>,
 
@@ -96,6 +84,18 @@ pub enum Commands {
     Auth(AuthArgs),
     /// Make an API request.
     Api(ApiArgs),
+    /// Set the default profile.
+    Profile(ProfileArgs),
+    /// List available profiles.
+    Profiles,
+}
+
+/// Arguments for the `profile` subcommand.
+#[derive(Args, Debug)]
+pub struct ProfileArgs {
+    /// Profile name to set as default.
+    #[arg(value_parser = validate_slug)]
+    pub name: String,
 }
 
 /// Arguments for the `auth` subcommand.
@@ -111,7 +111,11 @@ pub enum AuthCommands {
     /// Log in to RoundingWell.
     Login,
     /// Show current authentication status.
-    Status,
+    Status {
+        /// Print the stored credentials (token or username/password).
+        #[arg(long)]
+        show: bool,
+    },
     /// Log out and remove stored credentials.
     Logout,
 }
@@ -133,6 +137,10 @@ pub struct ApiArgs {
     /// Request body fields as key=value pairs (implies POST if no method set).
     #[arg(short = 'f', long = "field")]
     pub fields: Vec<String>,
+
+    /// Filter output with a jq expression.
+    #[arg(short = 'q', long)]
+    pub jq: Option<String>,
 
     /// Output raw JSON without pretty-printing.
     #[arg(long)]
