@@ -1,19 +1,19 @@
-# app-cli
+# RoundingWell CLI
 
-RoundingWell Command Line Interface — `rw`
+The `rw` command line interface for [RoundingWell](https://www.roundingwell.com/).
 
 ## Requirements
 
 - [Rust](https://www.rust-lang.org/tools/install) 1.70 or later (includes `cargo`)
 - OpenSSL development libraries (Linux only — usually pre-installed on macOS/Windows)
 
-  ```sh
-  # Debian / Ubuntu
-  sudo apt install pkg-config libssl-dev
+```sh
+# Debian / Ubuntu
+sudo apt install pkg-config libssl-dev
 
-  # Fedora / RHEL
-  sudo dnf install pkg-config openssl-devel
-  ```
+# Fedora / RHEL
+sudo dnf install pkg-config openssl-devel
+```
 
 ## Building from source
 
@@ -50,12 +50,16 @@ Verify the installation:
 rw --version
 ```
 
-## Configuration
+## Storage
 
-`rw` stores credentials and profiles in `~/.config/rw/profiles.json`.
-The file is created automatically on first use.
+`rw` stores files under `~/.config/rw/`:
 
-Example configuration:
+| Path                                            | Contents                                                  |
+|-------------------------------------------------|-----------------------------------------------------------|
+| `~/.config/rw/profiles.json`                    | Named profiles (organization + stage) and default profile |
+| `~/.config/rw/auth/{organization}-{stage}.json` | Auth credentials per organization+stage (mode 0600)       |
+
+### profiles.json
 
 ```json
 {
@@ -64,22 +68,33 @@ Example configuration:
       "organization": "demonstration",
       "stage": "prod"
     },
-    "woody": {
-      "organization": "woody",
+    "mercy": {
+      "organization": "mercy",
       "stage": "dev"
     }
   },
-  "authentication": {
-    "demonstration": {
-      "bearer": "<jwt-token>"
-    },
-    "woody": {
-      "basic": {
-        "username": "woody.gilk@roundingwell.com",
-        "password": "<plaintext-password>"
-      }
-    }
-  }
+  "default_profile": "demo"
+}
+```
+
+### auth/{organization}-{stage}.json
+
+Bearer token (written after `rw auth login`):
+
+```json
+{
+  "access_token": "<jwt>",
+  "refresh_token": "<token>",
+  "expires_at": 1234567890
+}
+```
+
+Basic credentials (written manually):
+
+```json
+{
+  "username": "jane.doe@roundingwell.com",
+  "password": "<plaintext-password>"
 }
 ```
 
@@ -87,48 +102,55 @@ Example configuration:
 
 ### Global options
 
-| Flag | Short | Default | Description |
-|------|-------|---------|-------------|
-| `--organization` | `-o` | `demonstration` | Organization slug |
-| `--stage` | `-s` | `prod` | Stage: `prod`, `sandbox`, `qa`, `dev` |
-| `--profile` | `-p` | — | Named profile (overrides `--organization` / `--stage`) |
+| Flag        | Short | Description          |
+|-------------|-------|----------------------|
+| `--profile` | `-p`  | Named profile to use |
+
+All commands require a profile. Set a default with `rw profile <name>`, or pass `--profile` on each invocation.
 
 Stage-to-domain mapping:
 
-| Stage | Domain |
-|-------|--------|
-| `prod`, `qa` | `https://{org}.roundingwell.com` |
-| `dev` | `https://{org}.roundingwell.dev` |
-| `sandbox` | `https://{org}-sandbox.roundingwell.com` |
+| Stage     | Domain                                            |
+|-----------|---------------------------------------------------|
+| `prod`    | `https://{organization}.roundingwell.com`         |
+| `sandbox` | `https://{organization}-sandbox.roundingwell.com` |
+| `qa`      | `https://{organization}.roundingwell.com`         |
+| `dev`     | `https://{organization}.roundingwell.dev`         |
+| `local`   | `http://localhost:8080`                           |
+
+### Profiles
+
+```sh
+rw profile mercy       # Set "mercy" as the default profile
+rw profiles            # List all configured profiles
+```
 
 ### Authentication
 
 ```sh
 rw auth login              # Open browser and authenticate via WorkOS
-rw auth status             # Show stored credential status
-rw auth logout             # Remove stored credentials
-
-# Authenticate against a specific organization / stage
-rw auth login --organization myorg --stage dev
+rw auth status             # Show authentication status for current profile
+rw auth status --show      # Also print the stored token or credentials
+rw auth logout             # Remove stored credentials for current profile
 
 # Use a named profile
-rw auth login --profile woody
+rw auth login --profile mercy
 ```
 
 ### API requests
 
 ```sh
-# GET /api/clinicians (default org + stage)
+# GET /api/clinicians (default profile)
 rw api clinicians
 
-# GET with a different organization
-rw api clinicians --organization myorg
-
 # POST with JSON body fields
-rw api clinicians --method POST --field name=Alice --field role=clinician
+rw api clinicians --method POST --field name="Alice Avalon" --field email=alice.avalon@mercy.org
 
 # Add extra request headers
 rw api clinicians --header "Accept: application/json"
+
+# Filter output with a jq expression
+rw api clinicians --jq '.[0]'
 
 # Print raw (unpretty) JSON
 rw api clinicians --raw
@@ -137,12 +159,15 @@ rw api clinicians --raw
 rw api clinicians --profile demo
 ```
 
+_**Note**: jq expression filtering uses [jaq](https://github.com/01mf02/jaq), which may have slight differences
+in formatting and may not support all jq features._
+
 ## Development
 
-Run the test suite:
+Format code:
 
 ```sh
-cargo test
+cargo fmt
 ```
 
 Check for lint warnings:
@@ -151,9 +176,8 @@ Check for lint warnings:
 cargo clippy
 ```
 
-Format code:
+Run the test suite:
 
 ```sh
-cargo fmt
+cargo test
 ```
-

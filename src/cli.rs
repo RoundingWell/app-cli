@@ -154,17 +154,18 @@ mod tests {
     #[test]
     fn test_valid_slugs() {
         assert!(validate_slug("demonstration").is_ok());
-        assert!(validate_slug("my-org").is_ok());
-        assert!(validate_slug("org123").is_ok());
-        assert!(validate_slug("ab").is_ok());
+        assert!(validate_slug("mercy-clinic").is_ok());
+        assert!(validate_slug("qa2").is_ok());
+        assert!(validate_slug("qa").is_ok());
     }
 
     #[test]
     fn test_invalid_slugs() {
         assert!(validate_slug("a").is_err()); // too short
-        assert!(validate_slug("My-Org").is_err()); // uppercase
-        assert!(validate_slug("-org").is_err()); // starts with hyphen
-        assert!(validate_slug("org-").is_err()); // ends with hyphen
-        assert!(validate_slug("org_name").is_err()); // underscore not allowed
+        assert!(validate_slug("Mercy-Clinic").is_err()); // uppercase
+        assert!(validate_slug("Mercy Clinic").is_err()); // space not allowed
+        assert!(validate_slug("-clinic").is_err()); // starts with hyphen
+        assert!(validate_slug("mercy-").is_err()); // ends with hyphen
+        assert!(validate_slug("mercy_clinic").is_err()); // underscore not allowed
     }
 }

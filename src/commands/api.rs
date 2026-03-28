@@ -11,7 +11,7 @@ use crate::cli::Stage;
 ///
 /// # Arguments
 /// * `base_url`      – resolved API URI (e.g. `https://demonstration.roundingwell.com/api`)
-/// * `org`           – organization slug, used to resolve auth credentials
+/// * `organization`           – organization slug, used to resolve auth credentials
 /// * `stage`         – deployment stage, used to resolve auth credentials
 /// * `endpoint`      – API path (e.g. `clinicians`, `clinicians/60fda0c4-eca0-434a-80d8-fd4e490aa051`)
 /// * `method`        – HTTP verb (e.g. `GET`, `POST`)
@@ -21,7 +21,7 @@ use crate::cli::Stage;
 /// * `raw`           – if true, print raw JSON; otherwise pretty-print
 pub async fn run(
     base_url: &str,
-    org: &str,
+    organization: &str,
     stage: &Stage,
     endpoint: &str,
     method: &str,
@@ -51,7 +51,7 @@ pub async fn run(
     );
 
     // Attach authentication header if credentials are stored.
-    match super::auth::resolve_auth(org, stage).await? {
+    match super::auth::resolve_auth(organization, stage).await? {
         Some(super::auth::ResolvedAuth::Bearer(token)) => {
             req = req.header(reqwest::header::AUTHORIZATION, format!("Bearer {}", token));
         }

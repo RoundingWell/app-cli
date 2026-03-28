@@ -61,7 +61,7 @@ struct TokenErrorResponse {
 
 /// Run `rw auth login` – use the OAuth Device Authorization Flow to authenticate
 /// via WorkOS AuthKit, poll for a token, and persist credentials.
-pub async fn login(profile: &str, org: &str, stage: &Stage) -> Result<()> {
+pub async fn login(profile: &str, organization: &str, stage: &Stage) -> Result<()> {
     let wos = workos_config(stage);
     let client = reqwest::Client::new();
 
@@ -140,7 +140,7 @@ pub async fn login(profile: &str, org: &str, stage: &Stage) -> Result<()> {
                 refresh_token: token.refresh_token,
                 expires_at: expires_at_from_duration(token.expires_in),
             };
-            save_auth_cache(org, stage, &cache)?;
+            save_auth_cache(organization, stage, &cache)?;
 
             println!(
                 "✓ Authenticated successfully. Credentials saved for profile \"{}\".",
@@ -177,8 +177,8 @@ pub async fn login(profile: &str, org: &str, stage: &Stage) -> Result<()> {
 
 /// Run `rw auth status` – report whether stored credentials exist.
 /// When `show` is true, print the raw credential value.
-pub fn status(profile: &str, org: &str, stage: &Stage, show: bool) -> Result<()> {
-    match load_auth_cache(org, stage)? {
+pub fn status(profile: &str, organization: &str, stage: &Stage, show: bool) -> Result<()> {
+    match load_auth_cache(organization, stage)? {
         Some(
             ref cache @ AuthCache::Bearer {
                 ref access_token, ..
@@ -218,8 +218,8 @@ pub fn status(profile: &str, org: &str, stage: &Stage, show: bool) -> Result<()>
 }
 
 /// Run `rw auth logout` – remove stored credentials for the profile.
-pub fn logout(profile: &str, org: &str, stage: &Stage) -> Result<()> {
-    if delete_auth_cache(org, stage)? {
+pub fn logout(profile: &str, organization: &str, stage: &Stage) -> Result<()> {
+    if delete_auth_cache(organization, stage)? {
         println!("✓ Credentials for profile \"{}\" removed.", profile);
     } else {
         println!("No stored credentials found for profile \"{}\".", profile);
@@ -233,11 +233,11 @@ pub enum ResolvedAuth {
     Basic { username: String, password: String },
 }
 
-/// Resolves auth credentials for the given org+stage, loading the cache once.
+/// Resolves auth credentials for the given organization+stage, loading the cache once.
 /// For bearer tokens, automatically refreshes if expired.
 /// Returns `None` if no credentials are stored.
-pub async fn resolve_auth(org: &str, stage: &Stage) -> Result<Option<ResolvedAuth>> {
-    let Some(cache) = load_auth_cache(org, stage)? else {
+pub async fn resolve_auth(organization: &str, stage: &Stage) -> Result<Option<ResolvedAuth>> {
+    let Some(cache) = load_auth_cache(organization, stage)? else {
         return Ok(None);
     };
 
@@ -265,7 +265,7 @@ pub async fn resolve_auth(org: &str, stage: &Stage) -> Result<Option<ResolvedAut
                 .await
                 .context("token refresh failed; run `rw auth login` to re-authenticate")?;
 
-            save_auth_cache(org, stage, &new_cache)?;
+            save_auth_cache(organization, stage, &new_cache)?;
 
             match new_cache {
                 AuthCache::Bearer { access_token, .. } => {
