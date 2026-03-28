@@ -93,7 +93,7 @@ mod tests {
     }
 
     #[test]
-    fn test_resolve_org_profile() {
+    fn test_resolve_organization_profile() {
         let mut config = Config::default();
         config.profiles.insert(
             "demo".to_string(),
@@ -102,9 +102,9 @@ mod tests {
                 stage: Stage::Prod,
             },
         );
-        let (profile, org, stage) = resolve_profile(&config, Some("demo")).unwrap();
+        let (profile, organization, stage) = resolve_profile(&config, Some("demo")).unwrap();
         assert_eq!(profile, "demo");
-        assert_eq!(org, "demonstration");
+        assert_eq!(organization, "demonstration");
         assert_eq!(stage, Stage::Prod);
     }
 
@@ -119,9 +119,9 @@ mod tests {
             },
         );
         config.default_profile = Some("demo".to_string());
-        let (profile, org, stage) = resolve_profile(&config, None).unwrap();
+        let (profile, organization, stage) = resolve_profile(&config, None).unwrap();
         assert_eq!(profile, "demo");
-        assert_eq!(org, "demonstration");
+        assert_eq!(organization, "demonstration");
         assert_eq!(stage, Stage::Sandbox);
     }
 

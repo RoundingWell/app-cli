@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use crate::cli::Stage;
 
-/// Auth credentials stored per org+stage in `~/.config/rw/auth/{org}-{stage}.json`.
+/// Auth credentials stored per organization+stage in `~/.config/rw/auth/{organization}-{stage}.json`.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(untagged)]
 pub enum AuthCache {
@@ -31,19 +31,19 @@ impl AuthCache {
     }
 }
 
-/// Returns the path to the auth cache file: `~/.config/rw/auth/{org}-{stage}.json`.
-pub fn auth_cache_path(org: &str, stage: &Stage) -> Result<PathBuf> {
+/// Returns the path to the auth cache file: `~/.config/rw/auth/{organization}-{stage}.json`.
+pub fn auth_cache_path(organization: &str, stage: &Stage) -> Result<PathBuf> {
     let home = dirs::home_dir().context("could not determine home directory")?;
     Ok(home
         .join(".config")
         .join("rw")
         .join("auth")
-        .join(format!("{}-{}.json", org, stage)))
+        .join(format!("{}-{}.json", organization, stage)))
 }
 
-/// Loads the auth cache for the given org+stage. Returns `None` if no cache exists.
-pub fn load_auth_cache(org: &str, stage: &Stage) -> Result<Option<AuthCache>> {
-    let path = auth_cache_path(org, stage)?;
+/// Loads the auth cache for the given organization+stage. Returns `None` if no cache exists.
+pub fn load_auth_cache(organization: &str, stage: &Stage) -> Result<Option<AuthCache>> {
+    let path = auth_cache_path(organization, stage)?;
     if !path.exists() {
         return Ok(None);
     }
@@ -54,10 +54,10 @@ pub fn load_auth_cache(org: &str, stage: &Stage) -> Result<Option<AuthCache>> {
     Ok(Some(cache))
 }
 
-/// Persists the auth cache for the given org+stage, creating directories as needed.
+/// Persists the auth cache for the given organization+stage, creating directories as needed.
 /// The file is written with mode 0600 (owner read/write only) on Unix.
-pub fn save_auth_cache(org: &str, stage: &Stage, cache: &AuthCache) -> Result<()> {
-    let path = auth_cache_path(org, stage)?;
+pub fn save_auth_cache(organization: &str, stage: &Stage, cache: &AuthCache) -> Result<()> {
+    let path = auth_cache_path(organization, stage)?;
     if let Some(parent) = path.parent() {
         create_private_dir(parent)
             .with_context(|| format!("could not create auth directory: {}", parent.display()))?;
@@ -102,10 +102,10 @@ fn write_private_file(path: &std::path::Path, contents: &str) -> Result<()> {
     Ok(())
 }
 
-/// Deletes the auth cache file for the given org+stage.
+/// Deletes the auth cache file for the given organization+stage.
 /// Returns `true` if a file was removed, `false` if none existed.
-pub fn delete_auth_cache(org: &str, stage: &Stage) -> Result<bool> {
-    let path = auth_cache_path(org, stage)?;
+pub fn delete_auth_cache(organization: &str, stage: &Stage) -> Result<bool> {
+    let path = auth_cache_path(organization, stage)?;
     if path.exists() {
         std::fs::remove_file(&path)
             .with_context(|| format!("could not remove auth cache: {}", path.display()))?;
