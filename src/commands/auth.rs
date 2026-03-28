@@ -3,8 +3,10 @@ use serde::Deserialize;
 use std::time::Duration;
 use tokio::time::sleep;
 
+use crate::auth_cache::{
+    delete_auth_cache, expires_at_from_duration, load_auth_cache, save_auth_cache, AuthCache,
+};
 use crate::cli::Stage;
-use crate::config::{load_config, save_config, AuthEntry};
 
 struct WorkOsConfig {
     client_id: &'static str,
@@ -47,6 +49,8 @@ struct DeviceAuthResponse {
 #[derive(Debug, Deserialize)]
 struct TokenResponse {
     access_token: String,
+    refresh_token: Option<String>,
+    expires_in: u64,
 }
 
 /// Error response from the token endpoint while polling.
@@ -56,15 +60,16 @@ struct TokenErrorResponse {
 }
 
 /// Run `rw auth login` – use the OAuth Device Authorization Flow to authenticate
-/// via WorkOS AuthKit, poll for a token, and persist the bearer token.
-pub async fn login(profile: &str, stage: &Stage) -> Result<()> {
+/// via WorkOS AuthKit, poll for a token, and persist credentials.
+pub async fn login(profile: &str, org: &str, stage: &Stage) -> Result<()> {
     let wos = workos_config(stage);
     let client = reqwest::Client::new();
 
     // Step 1: Request device authorization.
+    // `offline_access` scope is required to receive a refresh token in the token response.
     let resp = client
         .post(wos.device_auth_url)
-        .form(&[("client_id", wos.client_id)])
+        .form(&[("client_id", wos.client_id), ("scope", "offline_access")])
         .send()
         .await
         .context("failed to reach WorkOS device authorization endpoint")?;
@@ -130,14 +135,12 @@ pub async fn login(profile: &str, stage: &Stage) -> Result<()> {
                 .await
                 .context("failed to parse token response")?;
 
-            let mut config = load_config()?;
-            config.authentication.insert(
-                profile.to_string(),
-                AuthEntry::Bearer {
-                    bearer: token.access_token,
-                },
-            );
-            save_config(&config)?;
+            let cache = AuthCache::Bearer {
+                access_token: token.access_token,
+                refresh_token: token.refresh_token,
+                expires_at: expires_at_from_duration(token.expires_in),
+            };
+            save_auth_cache(org, stage, &cache)?;
 
             println!(
                 "✓ Authenticated successfully. Credentials saved for profile \"{}\".",
@@ -174,26 +177,36 @@ pub async fn login(profile: &str, stage: &Stage) -> Result<()> {
 
 /// Run `rw auth status` – report whether stored credentials exist.
 /// When `show` is true, print the raw credential value.
-pub fn status(profile: &str, show: bool) -> Result<()> {
-    let config = load_config()?;
-    match config.authentication.get(profile) {
-        Some(AuthEntry::Bearer { bearer }) => {
-            println!(
-                "✓ Authenticated using profile \"{}\" (bearer token).",
-                profile
-            );
+pub fn status(profile: &str, org: &str, stage: &Stage, show: bool) -> Result<()> {
+    match load_auth_cache(org, stage)? {
+        Some(
+            ref cache @ AuthCache::Bearer {
+                ref access_token, ..
+            },
+        ) => {
+            if cache.is_expired() {
+                println!(
+                    "✓ Authenticated using profile \"{}\" (bearer token, expired – will refresh on next use).",
+                    profile
+                );
+            } else {
+                println!(
+                    "✓ Authenticated using profile \"{}\" (bearer token).",
+                    profile
+                );
+            }
             if show {
-                println!("  token: {}", bearer);
+                println!("  token: {}", access_token);
             }
         }
-        Some(AuthEntry::Basic { basic }) => {
+        Some(AuthCache::Basic { username, password }) => {
             println!(
                 "✓ Authenticated using profile \"{}\" (basic, user: {}).",
-                profile, basic.username
+                profile, username
             );
             if show {
-                println!("  username: {}", basic.username);
-                println!("  password: {}", basic.password);
+                println!("  username: {}", username);
+                println!("  password: {}", password);
             }
         }
         None => {
@@ -205,13 +218,95 @@ pub fn status(profile: &str, show: bool) -> Result<()> {
 }
 
 /// Run `rw auth logout` – remove stored credentials for the profile.
-pub fn logout(profile: &str) -> Result<()> {
-    let mut config = load_config()?;
-    if config.authentication.remove(profile).is_some() {
-        save_config(&config)?;
+pub fn logout(profile: &str, org: &str, stage: &Stage) -> Result<()> {
+    if delete_auth_cache(org, stage)? {
         println!("✓ Credentials for profile \"{}\" removed.", profile);
     } else {
         println!("No stored credentials found for profile \"{}\".", profile);
     }
     Ok(())
+}
+
+/// Resolved authentication credentials ready to attach to a request.
+pub enum ResolvedAuth {
+    Bearer(String),
+    Basic { username: String, password: String },
+}
+
+/// Resolves auth credentials for the given org+stage, loading the cache once.
+/// For bearer tokens, automatically refreshes if expired.
+/// Returns `None` if no credentials are stored.
+pub async fn resolve_auth(org: &str, stage: &Stage) -> Result<Option<ResolvedAuth>> {
+    let Some(cache) = load_auth_cache(org, stage)? else {
+        return Ok(None);
+    };
+
+    match cache {
+        AuthCache::Basic { username, password } => {
+            Ok(Some(ResolvedAuth::Basic { username, password }))
+        }
+        AuthCache::Bearer {
+            ref access_token, ..
+        } => {
+            if !cache.is_expired() {
+                return Ok(Some(ResolvedAuth::Bearer(access_token.clone())));
+            }
+
+            // Token is expired – attempt a refresh.
+            let refresh_token = match &cache {
+                AuthCache::Bearer {
+                    refresh_token: Some(rt),
+                    ..
+                } => rt.clone(),
+                _ => bail!("authentication token expired; run `rw auth login` to re-authenticate"),
+            };
+
+            let new_cache = try_refresh(stage, &refresh_token)
+                .await
+                .context("token refresh failed; run `rw auth login` to re-authenticate")?;
+
+            save_auth_cache(org, stage, &new_cache)?;
+
+            match new_cache {
+                AuthCache::Bearer { access_token, .. } => {
+                    Ok(Some(ResolvedAuth::Bearer(access_token)))
+                }
+                _ => unreachable!("refresh always returns a bearer token"),
+            }
+        }
+    }
+}
+
+/// Exchanges a refresh token for a new access token and refresh token.
+async fn try_refresh(stage: &Stage, refresh_token: &str) -> Result<AuthCache> {
+    let wos = workos_config(stage);
+    let client = reqwest::Client::new();
+
+    let resp = client
+        .post(wos.token_url)
+        .form(&[
+            ("grant_type", "refresh_token"),
+            ("refresh_token", refresh_token),
+            ("client_id", wos.client_id),
+        ])
+        .send()
+        .await
+        .context("failed to reach WorkOS token endpoint")?;
+
+    let status = resp.status();
+    if !status.is_success() {
+        let body = resp.text().await.unwrap_or_default();
+        bail!("token endpoint returned {}: {}", status, body);
+    }
+
+    let token: TokenResponse = resp
+        .json()
+        .await
+        .context("failed to parse refresh token response")?;
+
+    Ok(AuthCache::Bearer {
+        access_token: token.access_token,
+        refresh_token: token.refresh_token,
+        expires_at: expires_at_from_duration(token.expires_in),
+    })
 }

@@ -10,8 +10,6 @@ use crate::cli::Stage;
 pub struct Config {
     #[serde(default)]
     pub profiles: HashMap<String, Profile>,
-    #[serde(default)]
-    pub authentication: HashMap<String, AuthEntry>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default_profile: Option<String>,
 }
@@ -21,21 +19,6 @@ pub struct Config {
 pub struct Profile {
     pub organization: String,
     pub stage: Stage,
-}
-
-/// Authentication credentials stored for an organization.
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(untagged)]
-pub enum AuthEntry {
-    Bearer { bearer: String },
-    Basic { basic: BasicCredentials },
-}
-
-/// HTTP Basic credentials.
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct BasicCredentials {
-    pub username: String,
-    pub password: String,
 }
 
 /// Returns the path to the config file: `~/.config/rw/profiles.json`.
@@ -104,19 +87,9 @@ mod tests {
                 stage: Stage::Prod,
             },
         );
-        config.authentication.insert(
-            "demo".to_string(),
-            AuthEntry::Bearer {
-                bearer: "token123".to_string(),
-            },
-        );
         let json = serde_json::to_string_pretty(&config).unwrap();
         let loaded: Config = serde_json::from_str(&json).unwrap();
         assert_eq!(loaded.profiles["demo"].organization, "demonstration");
-        match &loaded.authentication["demo"] {
-            AuthEntry::Bearer { bearer } => assert_eq!(bearer, "token123"),
-            _ => panic!("expected bearer auth"),
-        }
     }
 
     #[test]

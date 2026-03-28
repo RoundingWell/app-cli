@@ -5,14 +5,14 @@ use jaq_json::{read, Val};
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use std::collections::HashMap;
 
-use crate::config::{AuthEntry, Config};
+use crate::cli::Stage;
 
 /// Run `rw api <endpoint>` – make an HTTP request to the RoundingWell API.
 ///
 /// # Arguments
-/// * `config`        – loaded configuration (for authentication lookup)
 /// * `base_url`      – resolved API URI (e.g. `https://demonstration.roundingwell.com/api`)
-/// * `profile`       – profile name used to look up auth credentials
+/// * `org`           – organization slug, used to resolve auth credentials
+/// * `stage`         – deployment stage, used to resolve auth credentials
 /// * `endpoint`      – API path (e.g. `clinicians`, `clinicians/60fda0c4-eca0-434a-80d8-fd4e490aa051`)
 /// * `method`        – HTTP verb (e.g. `GET`, `POST`)
 /// * `extra_headers` – additional raw header strings (`"Name: value"`)
@@ -20,9 +20,9 @@ use crate::config::{AuthEntry, Config};
 /// * `jq`            – optional jq filter expression to apply to the response
 /// * `raw`           – if true, print raw JSON; otherwise pretty-print
 pub async fn run(
-    config: &Config,
     base_url: &str,
-    profile: &str,
+    org: &str,
+    stage: &Stage,
     endpoint: &str,
     method: &str,
     extra_headers: &[String],
@@ -51,15 +51,14 @@ pub async fn run(
     );
 
     // Attach authentication header if credentials are stored.
-    if let Some(auth) = config.authentication.get(profile) {
-        match auth {
-            AuthEntry::Bearer { bearer } => {
-                req = req.header(reqwest::header::AUTHORIZATION, format!("Bearer {}", bearer));
-            }
-            AuthEntry::Basic { basic } => {
-                req = req.basic_auth(&basic.username, Some(&basic.password));
-            }
+    match super::auth::resolve_auth(org, stage).await? {
+        Some(super::auth::ResolvedAuth::Bearer(token)) => {
+            req = req.header(reqwest::header::AUTHORIZATION, format!("Bearer {}", token));
         }
+        Some(super::auth::ResolvedAuth::Basic { username, password }) => {
+            req = req.basic_auth(&username, Some(&password));
+        }
+        None => {}
     }
 
     // Parse and attach extra headers supplied via -H.

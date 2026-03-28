@@ -1,4 +1,5 @@
 mod api;
+mod auth_cache;
 mod cli;
 mod commands;
 mod config;
@@ -18,16 +19,16 @@ async fn main() -> Result<()> {
 
     match cli.command {
         Commands::Auth(auth_args) => {
-            let (profile, _organization, stage) = resolve_profile(&config, cli.profile.as_deref())?;
+            let (profile, organization, stage) = resolve_profile(&config, cli.profile.as_deref())?;
             match auth_args.command {
                 AuthCommands::Login => {
-                    commands::auth::login(&profile, &stage).await?;
+                    commands::auth::login(&profile, &organization, &stage).await?;
                 }
                 AuthCommands::Status { show } => {
-                    commands::auth::status(&profile, show)?;
+                    commands::auth::status(&profile, &organization, &stage, show)?;
                 }
                 AuthCommands::Logout => {
-                    commands::auth::logout(&profile)?;
+                    commands::auth::logout(&profile, &organization, &stage)?;
                 }
             }
         }
@@ -95,12 +96,12 @@ async fn main() -> Result<()> {
             }
         }
         Commands::Api(api_args) => {
-            let (profile, organization, stage) = resolve_profile(&config, cli.profile.as_deref())?;
+            let (_profile, organization, stage) = resolve_profile(&config, cli.profile.as_deref())?;
             let base_url = resolve_api(&organization, &stage);
             commands::api::run(
-                &config,
                 &base_url,
-                &profile,
+                &organization,
+                &stage,
                 &api_args.endpoint,
                 &api_args.method,
                 &api_args.headers,
