@@ -111,11 +111,9 @@ pub enum AuthCommands {
     /// Log in to RoundingWell.
     Login,
     /// Show current authentication status.
-    Status {
-        /// Print the stored credentials (token or username/password).
-        #[arg(long)]
-        show: bool,
-    },
+    Status,
+    /// Print the Authorization header value for the current profile.
+    Header,
     /// Log out and remove stored credentials.
     Logout,
 }
