@@ -78,12 +78,12 @@ rw --version
 
 `rw` stores files under `~/.config/rw/`:
 
-| Path                                            | Contents                                                  |
-|-------------------------------------------------|-----------------------------------------------------------|
-| `~/.config/rw/profiles.json`                    | Named profiles (organization + stage) and default profile |
-| `~/.config/rw/auth/{organization}-{stage}.json` | Auth credentials per organization+stage (mode 0600)       |
+| Path                                            | Contents                                            |
+|-------------------------------------------------|-----------------------------------------------------|
+| `~/.config/rw/config.json`                      | Tool configuration                                  |
+| `~/.config/rw/auth/{organization}-{stage}.json` | Auth credentials per organization+stage (mode 0600) |
 
-### profiles.json
+### config.json
 
 ```json
 {
