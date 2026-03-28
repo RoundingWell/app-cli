@@ -80,7 +80,7 @@ async fn main() -> Result<()> {
                     },
                 );
             }
-            config.default_profile = Some(name.clone());
+            config.default = Some(name.clone());
             save_config(&config)?;
             println!("Default profile set to \"{}\".", name);
         }
@@ -88,7 +88,7 @@ async fn main() -> Result<()> {
             let mut names: Vec<&String> = config.profiles.keys().collect();
             names.sort();
             for name in names {
-                if config.default_profile.as_deref() == Some(name) {
+                if config.default.as_deref() == Some(name) {
                     println!("* {}", name);
                 } else {
                     println!("  {}", name);

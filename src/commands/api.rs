@@ -11,7 +11,7 @@ use crate::cli::Stage;
 ///
 /// # Arguments
 /// * `base_url`      – resolved API URI (e.g. `https://demonstration.roundingwell.com/api`)
-/// * `organization`           – organization slug, used to resolve auth credentials
+/// * `organization`  – organization slug, used to resolve auth credentials
 /// * `stage`         – deployment stage, used to resolve auth credentials
 /// * `endpoint`      – API path (e.g. `clinicians`, `clinicians/60fda0c4-eca0-434a-80d8-fd4e490aa051`)
 /// * `method`        – HTTP verb (e.g. `GET`, `POST`)

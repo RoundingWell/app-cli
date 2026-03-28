@@ -63,6 +63,7 @@ rw --version
 
 ```json
 {
+  "default": "demo",
   "profiles": {
     "demo": {
       "organization": "demonstration",
@@ -72,8 +73,7 @@ rw --version
       "organization": "mercy",
       "stage": "dev"
     }
-  },
-  "default_profile": "demo"
+  }
 }
 ```
 
