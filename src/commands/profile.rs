@@ -106,6 +106,22 @@ pub fn add(
     Ok(())
 }
 
+/// Run `rw profiles rm <name>` – remove a profile. Clears the default if it was the removed profile.
+pub fn rm(name: &str, config: &mut Config, out: &Output) -> Result<()> {
+    if !config.profiles.contains_key(name) {
+        anyhow::bail!("profile '{}' does not exist", name);
+    }
+    config.profiles.remove(name);
+    if config.default.as_deref() == Some(name) {
+        config.default = None;
+    }
+    save_config(config)?;
+    out.print(&RmOutput {
+        name: name.to_string(),
+    });
+    Ok(())
+}
+
 /// Run `rw profiles` – list all available profiles.
 pub fn list(config: &Config, out: &Output) {
     let mut names: Vec<String> = config.profiles.keys().cloned().collect();
@@ -137,6 +153,17 @@ pub struct AddOutput {
 impl CommandOutput for AddOutput {
     fn plain(&self) -> String {
         format!("Profile '{}' created.", self.name)
+    }
+}
+
+#[derive(Serialize)]
+pub struct RmOutput {
+    pub name: String,
+}
+
+impl CommandOutput for RmOutput {
+    fn plain(&self) -> String {
+        format!("Profile '{}' removed.", self.name)
     }
 }
 
@@ -312,5 +339,62 @@ mod tests {
         )
         .unwrap_err();
         assert!(err.to_string().contains("--json"));
+    }
+
+    #[test]
+    fn test_rm_output_plain() {
+        let output = RmOutput {
+            name: "demo".to_string(),
+        };
+        assert_eq!(output.plain(), "Profile 'demo' removed.");
+    }
+
+    #[test]
+    fn test_rm_output_json() {
+        let output = RmOutput {
+            name: "demo".to_string(),
+        };
+        let json = serde_json::to_value(&output).unwrap();
+        assert_eq!(json["name"], "demo");
+    }
+
+    #[test]
+    fn test_rm_removes_profile() {
+        let mut config = config_with_profile("demo", "mercy", Stage::Prod);
+        rm("demo", &mut config, &out_plain()).unwrap();
+        assert!(!config.profiles.contains_key("demo"));
+    }
+
+    #[test]
+    fn test_rm_clears_default_when_removed() {
+        let mut config = config_with_profile("demo", "mercy", Stage::Prod);
+        config.default = Some("demo".to_string());
+        rm("demo", &mut config, &out_plain()).unwrap();
+        assert!(config.default.is_none());
+    }
+
+    #[test]
+    fn test_rm_leaves_default_when_other_profile_removed() {
+        let mut config = config_with_profile("demo", "mercy", Stage::Prod);
+        config.profiles.insert(
+            "other".to_string(),
+            Profile {
+                organization: "other-org".to_string(),
+                stage: Stage::Sandbox,
+            },
+        );
+        config.default = Some("demo".to_string());
+        rm("other", &mut config, &out_plain()).unwrap();
+        assert_eq!(config.default.as_deref(), Some("demo"));
+    }
+
+    #[test]
+    fn test_rm_errors_when_profile_not_found() {
+        let mut config = Config {
+            default: None,
+            profiles: BTreeMap::new(),
+        };
+        let err = rm("missing", &mut config, &out_plain()).unwrap_err();
+        assert!(err.to_string().contains("does not exist"));
     }
 }
