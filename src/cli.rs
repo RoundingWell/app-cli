@@ -4,7 +4,7 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 pub fn validate_slug(s: &str) -> Result<String, String> {
     if s.len() < 2 {
         return Err(format!(
-            "\"{}\" is too short; slugs must be at least 2 characters",
+            "'{}' is too short; slugs must be at least 2 characters",
             s
         ));
     }
@@ -13,7 +13,7 @@ pub fn validate_slug(s: &str) -> Result<String, String> {
         Ok(s.to_string())
     } else {
         Err(format!(
-            "\"{}\" is not a valid slug; must match ^[a-z][a-z0-9-]*[a-z0-9]$",
+            "'{}' is not a valid slug; must match ^[a-z][a-z0-9-]*[a-z0-9]$",
             s
         ))
     }
@@ -72,6 +72,10 @@ pub struct Cli {
     /// Profile name.
     #[arg(short = 'p', long, value_parser = validate_slug, global = true)]
     pub profile: Option<String>,
+
+    /// Output results as JSON.
+    #[arg(long, global = true)]
+    pub json: bool,
 
     #[command(subcommand)]
     pub command: Commands,
