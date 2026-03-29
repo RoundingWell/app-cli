@@ -30,11 +30,13 @@ The `rw` command line interface for [RoundingWell](https://www.roundingwell.com/
 
 ### Global options
 
-| Flag        | Short | Description          |
-|-------------|-------|----------------------|
-| `--profile` | `-p`  | Named profile to use |
+| Flag        | Short | Description               |
+|-------------|-------|---------------------------|
+| `--profile` | `-p`  | Named profile to use      |
+| `--json`    |       | Change all output to JSON |
 
 All commands require a profile. Set a default with `rw profile <name>`, or pass `--profile` on each invocation.
+See [Adding a profile](#adding-a-profile) to add a profile.
 
 Stage-to-domain mapping:
 
@@ -49,9 +51,33 @@ Stage-to-domain mapping:
 ### Profiles
 
 ```sh
-rw profile mercy       # Set "mercy" as the default profile
-rw profiles            # List all configured profiles
+rw profiles                 # List all configured profiles
+rw profiles add mercy       # Adds the "mercy" profile (see below)
+rw profile mercy            # Set "mercy" as the default profile (profile must already exist)
 ```
+
+#### Adding a profile
+
+```sh
+# Interactive – prompts for organization and stage
+rw profiles add mercy
+
+# Non-interactive – provide all values as flags
+rw profiles add mercy --organization mercy-clinic --stage prod
+
+# Short flags
+rw profiles add mercy -o mercy-clinic -g prod
+
+# JSON output (requires --organization and --stage; errors if either is missing)
+rw profiles add mercy -o mercy-clinic -g prod --json
+```
+
+| Flag             | Short | Description                                             |
+|------------------|-------|---------------------------------------------------------|
+| `--organization` | `-o`  | Organization slug (e.g. `mercy-clinic`)                 |
+| `--stage`        | `-g`  | Stage: `prod`, `sandbox`, `qa`, `dev`, or `local`       |
+
+If either flag is omitted, the CLI prompts for the missing value interactively. Passing `--json` without both flags is an error.
 
 ### Authentication
 

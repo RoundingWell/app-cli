@@ -90,8 +90,8 @@ pub enum Commands {
     Api(ApiArgs),
     /// Set the default profile.
     Profile(ProfileArgs),
-    /// List available profiles.
-    Profiles,
+    /// List available profiles or manage them.
+    Profiles(ProfilesArgs),
 }
 
 /// Arguments for the `profile` subcommand.
@@ -100,6 +100,36 @@ pub struct ProfileArgs {
     /// Profile name to set as default.
     #[arg(value_parser = validate_slug)]
     pub name: String,
+}
+
+/// Arguments for the `profiles` subcommand.
+#[derive(Args, Debug)]
+pub struct ProfilesArgs {
+    #[command(subcommand)]
+    pub command: Option<ProfilesCommands>,
+}
+
+/// Subcommands for `profiles`.
+#[derive(Subcommand, Debug)]
+pub enum ProfilesCommands {
+    /// Add a new profile.
+    Add(ProfilesAddArgs),
+}
+
+/// Arguments for `profiles add`.
+#[derive(Args, Debug)]
+pub struct ProfilesAddArgs {
+    /// Profile name to create.
+    #[arg(value_parser = validate_slug)]
+    pub name: String,
+
+    /// Organization slug.
+    #[arg(short = 'o', long, value_parser = validate_slug)]
+    pub organization: Option<String>,
+
+    /// Stage.
+    #[arg(short = 'g', long)]
+    pub stage: Option<Stage>,
 }
 
 /// Arguments for the `auth` subcommand.
