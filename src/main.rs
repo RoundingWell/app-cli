@@ -9,7 +9,7 @@ use anyhow::Result;
 use clap::Parser;
 
 use api::resolve_api;
-use cli::{AuthCommands, Cli, Commands};
+use cli::{AuthCommands, Cli, Commands, ProfilesCommands};
 use config::{load_config, resolve_profile};
 use output::Output;
 
@@ -48,9 +48,20 @@ async fn run(cli: Cli, out: &Output) -> Result<()> {
         Commands::Profile(profile_args) => {
             commands::profile::set_default(&profile_args.name, &mut config, out)?;
         }
-        Commands::Profiles => {
-            commands::profile::list(&config, out);
-        }
+        Commands::Profiles(profiles_args) => match profiles_args.command {
+            None => {
+                commands::profile::list(&config, out);
+            }
+            Some(ProfilesCommands::Add(args)) => {
+                commands::profile::add(
+                    &args.name,
+                    args.organization,
+                    args.stage,
+                    &mut config,
+                    out,
+                )?;
+            }
+        },
         Commands::Api(api_args) => {
             let (_profile, organization, stage) = resolve_profile(&config, cli.profile.as_deref())?;
             let base_url = resolve_api(&organization, &stage);
