@@ -168,7 +168,7 @@ pub async fn login(profile: &str, organization: &str, stage: &Stage, out: &Outpu
         device_auth.user_code, device_auth.verification_uri, device_auth.verification_uri_complete
     ));
 
-    if let Err(e) = open::that(&device_auth.verification_uri_complete) {
+    if let Err(e) = webbrowser::open(&device_auth.verification_uri_complete) {
         out.warn(&format!(
             "Warning: could not open browser automatically: {}",
             e
