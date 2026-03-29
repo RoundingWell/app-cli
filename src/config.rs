@@ -73,7 +73,7 @@ pub fn save_config(config: &Config) -> Result<()> {
             .with_context(|| format!("could not create config directory: {}", parent.display()))?;
     }
     let contents = serde_json::to_string_pretty(config).context("could not serialize config")?;
-    std::fs::write(&path, contents)
+    write_atomic::write_file(&path, contents.as_bytes())
         .with_context(|| format!("could not write config file: {}", path.display()))?;
     Ok(())
 }

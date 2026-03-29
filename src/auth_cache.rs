@@ -83,22 +83,14 @@ fn create_private_dir(path: &std::path::Path) -> Result<()> {
     Ok(())
 }
 
-/// Writes `contents` to `path` with mode 0600 on Unix.
+/// Writes `contents` to `path` atomically, with mode 0600 on Unix.
 fn write_private_file(path: &std::path::Path, contents: &str) -> Result<()> {
+    write_atomic::write_file(path, contents.as_bytes())?;
     #[cfg(unix)]
     {
-        use std::io::Write;
-        use std::os::unix::fs::OpenOptionsExt;
-        std::fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .mode(0o600)
-            .open(path)?
-            .write_all(contents.as_bytes())?;
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
     }
-    #[cfg(not(unix))]
-    std::fs::write(path, contents)?;
     Ok(())
 }
 
