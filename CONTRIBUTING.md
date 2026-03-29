@@ -3,15 +3,6 @@
 ## Requirements
 
 - [Rust](https://www.rust-lang.org/tools/install) 1.70 or later (includes `cargo`)
-- OpenSSL development libraries (Linux only — usually pre-installed on macOS/Windows)
-
-```sh
-# Debian / Ubuntu
-sudo apt install pkg-config libssl-dev
-
-# Fedora / RHEL
-sudo dnf install pkg-config openssl-devel
-```
 
 ## Building from source
 
