@@ -21,6 +21,11 @@ cargo fmt               # Format
 - Use test driven development (TDD) principles; create tests that fail, then implement to satisfy test
 - Prefer unit tests to integration tests, mock network boundaries
 
+## Git Tags
+
+- Always follow [semantic versioning](https://semver.org/) for tagging versions
+- Never use a "v" prefix for tagging versions (e.g. use `1.2.3` not `v1.2.3`)
+
 ## Git Commits
 
 - Use [conventional commits](https://www.conventionalcommits.org/en/v1.0.0/#summary) (CC) when making commits
