@@ -1,5 +1,5 @@
 use anyhow::{bail, Context, Result};
-use serde::Deserialize;
+use serde::Serialize;
 use std::time::Duration;
 use tokio::time::sleep;
 
@@ -7,6 +7,7 @@ use crate::auth_cache::{
     delete_auth_cache, expires_at_from_duration, load_auth_cache, save_auth_cache, AuthCache,
 };
 use crate::cli::Stage;
+use crate::output::{CommandOutput, Output};
 
 struct WorkOsConfig {
     client_id: &'static str,
@@ -34,7 +35,7 @@ fn workos_config(stage: &Stage) -> &'static WorkOsConfig {
 }
 
 /// Response from the device authorization endpoint.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, serde::Deserialize)]
 struct DeviceAuthResponse {
     device_code: String,
     user_code: String,
@@ -46,7 +47,7 @@ struct DeviceAuthResponse {
 }
 
 /// Response from the token endpoint on success.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, serde::Deserialize)]
 struct TokenResponse {
     access_token: String,
     refresh_token: Option<String>,
@@ -54,14 +55,86 @@ struct TokenResponse {
 }
 
 /// Error response from the token endpoint while polling.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, serde::Deserialize)]
 struct TokenErrorResponse {
     error: String,
 }
 
+// --- Output types ---
+
+#[derive(Serialize)]
+pub struct MessageOutput {
+    pub message: String,
+}
+
+impl CommandOutput for MessageOutput {
+    fn plain(&self) -> String {
+        self.message.clone()
+    }
+}
+
+#[derive(Serialize)]
+pub struct StatusOutput {
+    #[serde(rename = "type")]
+    pub auth_type: Option<String>,
+    pub authenticated: bool,
+    pub expired: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub username: Option<String>,
+    #[serde(skip)]
+    pub profile: String,
+}
+
+impl CommandOutput for StatusOutput {
+    fn plain(&self) -> String {
+        match (self.authenticated, self.auth_type.as_deref(), self.expired) {
+            (false, _, _) => format!(
+                "✗ Not authenticated for profile '{}'.\n  Run `rw auth login` to authenticate.",
+                self.profile
+            ),
+            (true, Some("bearer"), true) => format!(
+                "✓ Authenticated using profile '{}' (bearer token, expired – will refresh on next use).",
+                self.profile
+            ),
+            (true, Some("bearer"), false) => format!(
+                "✓ Authenticated using profile '{}' (bearer token).",
+                self.profile
+            ),
+            (true, Some("basic"), _) => {
+                if let Some(ref u) = self.username {
+                    format!(
+                        "✓ Authenticated using profile '{}' (basic, user: {}).",
+                        self.profile, u
+                    )
+                } else {
+                    format!("✓ Authenticated using profile '{}' (basic).", self.profile)
+                }
+            }
+            _ => format!("✓ Authenticated using profile '{}'.", self.profile),
+        }
+    }
+}
+
+#[derive(Serialize)]
+pub struct HeaderOutput {
+    pub header: String,
+}
+
+impl CommandOutput for HeaderOutput {
+    fn plain(&self) -> String {
+        self.header.clone()
+    }
+}
+
+// --- Command implementations ---
+
 /// Run `rw auth login` – use the OAuth Device Authorization Flow to authenticate
 /// via WorkOS AuthKit, poll for a token, and persist credentials.
-pub async fn login(profile: &str, organization: &str, stage: &Stage) -> Result<()> {
+pub async fn login(profile: &str, organization: &str, stage: &Stage, out: &Output) -> Result<()> {
+    if out.json {
+        anyhow::bail!("`rw auth login` is interactive and cannot be used with --json");
+    }
+
     let wos = workos_config(stage);
     let client = reqwest::Client::new();
 
@@ -89,25 +162,24 @@ pub async fn login(profile: &str, organization: &str, stage: &Stage) -> Result<(
         .await
         .context("failed to parse device authorization response")?;
 
-    // Step 2: Prompt user to authenticate in browser.
-    println!(
-        "Open the following URL in your browser and enter code: {}",
-        device_auth.user_code
-    );
-    println!("  {}", device_auth.verification_uri);
-    println!();
-    println!("Or visit this URL to authenticate automatically:");
-    println!("  {}", device_auth.verification_uri_complete);
+    // Step 2: Open browser for authentication.
+    out.info(&format!(
+        "Open the following URL in your browser and enter code: {}\n  {}\n\nOr visit this URL to authenticate automatically:\n  {}",
+        device_auth.user_code, device_auth.verification_uri, device_auth.verification_uri_complete
+    ));
 
     if let Err(e) = open::that(&device_auth.verification_uri_complete) {
-        eprintln!("Warning: could not open browser automatically: {}", e);
+        out.warn(&format!(
+            "Warning: could not open browser automatically: {}",
+            e
+        ));
     }
 
     // Step 3: Poll for the token.
     let mut interval_secs = device_auth.interval.max(5);
     let deadline = std::time::Instant::now() + Duration::from_secs(device_auth.expires_in);
 
-    println!("Waiting for authentication...");
+    out.info("Waiting for authentication...");
 
     loop {
         sleep(Duration::from_secs(interval_secs)).await;
@@ -142,10 +214,12 @@ pub async fn login(profile: &str, organization: &str, stage: &Stage) -> Result<(
             };
             save_auth_cache(organization, stage, &cache)?;
 
-            println!(
-                "✓ Authenticated successfully. Credentials saved for profile \"{}\".",
-                profile
-            );
+            out.print(&MessageOutput {
+                message: format!(
+                    "✓ Authenticated successfully. Credentials saved for profile '{}'.",
+                    profile
+                ),
+            });
             return Ok(());
         }
 
@@ -176,30 +250,34 @@ pub async fn login(profile: &str, organization: &str, stage: &Stage) -> Result<(
 }
 
 /// Run `rw auth status` – report whether stored credentials exist.
-pub fn status(profile: &str, organization: &str, stage: &Stage) -> Result<()> {
+pub fn status(profile: &str, organization: &str, stage: &Stage, out: &Output) -> Result<()> {
     match load_auth_cache(organization, stage)? {
         Some(ref cache @ AuthCache::Bearer { .. }) => {
-            if cache.is_expired() {
-                println!(
-                    "✓ Authenticated using profile \"{}\" (bearer token, expired – will refresh on next use).",
-                    profile
-                );
-            } else {
-                println!(
-                    "✓ Authenticated using profile \"{}\" (bearer token).",
-                    profile
-                );
-            }
+            out.print(&StatusOutput {
+                auth_type: Some("bearer".to_string()),
+                authenticated: true,
+                expired: cache.is_expired(),
+                username: None,
+                profile: profile.to_string(),
+            });
         }
-        Some(AuthCache::Basic { username, .. }) => {
-            println!(
-                "✓ Authenticated using profile \"{}\" (basic, user: {}).",
-                profile, username
-            );
+        Some(AuthCache::Basic { ref username, .. }) => {
+            out.print(&StatusOutput {
+                auth_type: Some("basic".to_string()),
+                authenticated: true,
+                expired: false,
+                username: Some(username.clone()),
+                profile: profile.to_string(),
+            });
         }
         None => {
-            println!("✗ Not authenticated for profile \"{}\".", profile);
-            println!("  Run `rw auth login` to authenticate.");
+            out.print(&StatusOutput {
+                auth_type: None,
+                authenticated: false,
+                expired: false,
+                username: None,
+                profile: profile.to_string(),
+            });
         }
     }
     Ok(())
@@ -220,10 +298,12 @@ pub fn auth_header_value(auth: &ResolvedAuth) -> String {
 /// Run `rw auth header` – print the Authorization header value for API requests.
 /// For bearer tokens, prints `Bearer <token>` (refreshing if expired).
 /// For basic credentials, prints `Basic <base64(username:password)>`.
-pub async fn header(organization: &str, stage: &Stage) -> Result<()> {
+pub async fn header(organization: &str, stage: &Stage, out: &Output) -> Result<()> {
     match resolve_auth(organization, stage).await? {
         Some(ref auth) => {
-            println!("{}", auth_header_value(auth));
+            out.print(&HeaderOutput {
+                header: auth_header_value(auth),
+            });
         }
         None => {
             anyhow::bail!("not authenticated – run `rw auth login` first");
@@ -233,11 +313,15 @@ pub async fn header(organization: &str, stage: &Stage) -> Result<()> {
 }
 
 /// Run `rw auth logout` – remove stored credentials for the profile.
-pub fn logout(profile: &str, organization: &str, stage: &Stage) -> Result<()> {
+pub fn logout(profile: &str, organization: &str, stage: &Stage, out: &Output) -> Result<()> {
     if delete_auth_cache(organization, stage)? {
-        println!("✓ Credentials for profile \"{}\" removed.", profile);
+        out.print(&MessageOutput {
+            message: format!("✓ Credentials for profile '{}' removed.", profile),
+        });
     } else {
-        println!("No stored credentials found for profile \"{}\".", profile);
+        out.print(&MessageOutput {
+            message: format!("No stored credentials found for profile '{}'.", profile),
+        });
     }
     Ok(())
 }
@@ -355,5 +439,111 @@ mod tests {
         use base64::{engine::general_purpose::STANDARD, Engine};
         let expected = format!("Basic {}", STANDARD.encode("user@example.com:p@ss:word"));
         assert_eq!(auth_header_value(&auth), expected);
+    }
+
+    #[test]
+    fn test_message_output_plain() {
+        let output = MessageOutput {
+            message: "✓ Authenticated successfully. Credentials saved for profile 'demo'."
+                .to_string(),
+        };
+        assert_eq!(output.plain(), output.message);
+    }
+
+    #[test]
+    fn test_status_output_json_authenticated_bearer() {
+        let output = StatusOutput {
+            auth_type: Some("bearer".to_string()),
+            authenticated: true,
+            expired: false,
+            username: None,
+            profile: "demo".to_string(),
+        };
+        let json = serde_json::to_value(&output).unwrap();
+        assert_eq!(json["type"], "bearer");
+        assert_eq!(json["authenticated"], true);
+        assert_eq!(json["expired"], false);
+        // profile is skipped; username is omitted when None
+        assert!(json.get("profile").is_none());
+        assert!(json.get("username").is_none());
+    }
+
+    #[test]
+    fn test_status_output_json_authenticated_basic() {
+        let output = StatusOutput {
+            auth_type: Some("basic".to_string()),
+            authenticated: true,
+            expired: false,
+            username: Some("alice".to_string()),
+            profile: "demo".to_string(),
+        };
+        let json = serde_json::to_value(&output).unwrap();
+        assert_eq!(json["type"], "basic");
+        assert_eq!(json["username"], "alice");
+    }
+
+    #[test]
+    fn test_status_output_json_unauthenticated() {
+        let output = StatusOutput {
+            auth_type: None,
+            authenticated: false,
+            expired: false,
+            username: None,
+            profile: "demo".to_string(),
+        };
+        let json = serde_json::to_value(&output).unwrap();
+        assert!(json["type"].is_null());
+        assert_eq!(json["authenticated"], false);
+    }
+
+    #[test]
+    fn test_status_output_plain_bearer() {
+        let output = StatusOutput {
+            auth_type: Some("bearer".to_string()),
+            authenticated: true,
+            expired: false,
+            username: None,
+            profile: "demo".to_string(),
+        };
+        assert_eq!(
+            output.plain(),
+            "✓ Authenticated using profile 'demo' (bearer token)."
+        );
+    }
+
+    #[test]
+    fn test_status_output_plain_basic_with_username() {
+        let output = StatusOutput {
+            auth_type: Some("basic".to_string()),
+            authenticated: true,
+            expired: false,
+            username: Some("alice".to_string()),
+            profile: "demo".to_string(),
+        };
+        assert_eq!(
+            output.plain(),
+            "✓ Authenticated using profile 'demo' (basic, user: alice)."
+        );
+    }
+
+    #[test]
+    fn test_status_output_plain_unauthenticated() {
+        let output = StatusOutput {
+            auth_type: None,
+            authenticated: false,
+            expired: false,
+            username: None,
+            profile: "demo".to_string(),
+        };
+        assert!(output.plain().contains("✗ Not authenticated"));
+        assert!(output.plain().contains("demo"));
+    }
+
+    #[test]
+    fn test_header_output_plain() {
+        let output = HeaderOutput {
+            header: "Bearer mytoken".to_string(),
+        };
+        assert_eq!(output.plain(), "Bearer mytoken");
     }
 }

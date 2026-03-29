@@ -3,18 +3,28 @@ mod auth_cache;
 mod cli;
 mod commands;
 mod config;
+mod output;
 
 use anyhow::Result;
 use clap::Parser;
 
 use api::resolve_api;
-use cli::{AuthCommands, Cli, Commands, Stage};
-use config::{load_config, resolve_profile, save_config, Profile};
+use cli::{AuthCommands, Cli, Commands};
+use config::{load_config, resolve_profile};
+use output::Output;
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() {
     let cli = Cli::parse();
+    let out = Output { json: cli.json };
 
+    if let Err(e) = run(cli, &out).await {
+        out.error(&e);
+        std::process::exit(1);
+    }
+}
+
+async fn run(cli: Cli, out: &Output) -> Result<()> {
     let mut config = load_config()?;
 
     match cli.command {
@@ -22,81 +32,24 @@ async fn main() -> Result<()> {
             let (profile, organization, stage) = resolve_profile(&config, cli.profile.as_deref())?;
             match auth_args.command {
                 AuthCommands::Login => {
-                    commands::auth::login(&profile, &organization, &stage).await?;
+                    commands::auth::login(&profile, &organization, &stage, out).await?;
                 }
                 AuthCommands::Status => {
-                    commands::auth::status(&profile, &organization, &stage)?;
+                    commands::auth::status(&profile, &organization, &stage, out)?;
                 }
                 AuthCommands::Header => {
-                    commands::auth::header(&organization, &stage).await?;
+                    commands::auth::header(&organization, &stage, out).await?;
                 }
                 AuthCommands::Logout => {
-                    commands::auth::logout(&profile, &organization, &stage)?;
+                    commands::auth::logout(&profile, &organization, &stage, out)?;
                 }
             }
         }
         Commands::Profile(profile_args) => {
-            let name = &profile_args.name;
-            if !config.profiles.contains_key(name.as_str()) {
-                use std::io::{BufRead, Write};
-                let stdin = std::io::stdin();
-                let stdout = std::io::stdout();
-
-                let organization = loop {
-                    print!("Organization slug: ");
-                    stdout.lock().flush()?;
-                    let mut line = String::new();
-                    if stdin.lock().read_line(&mut line)? == 0 {
-                        anyhow::bail!("unexpected end of input");
-                    }
-                    match cli::validate_slug(line.trim()) {
-                        Ok(s) => break s,
-                        Err(e) => eprintln!("{}", e),
-                    }
-                };
-
-                let stage = loop {
-                    print!("Stage [prod, sandbox, qa, dev, local]: ");
-                    stdout.lock().flush()?;
-                    let mut line = String::new();
-                    if stdin.lock().read_line(&mut line)? == 0 {
-                        anyhow::bail!("unexpected end of input");
-                    }
-                    match line.trim() {
-                        "prod" => break Stage::Prod,
-                        "sandbox" => break Stage::Sandbox,
-                        "qa" => break Stage::Qa,
-                        "dev" => break Stage::Dev,
-                        "local" => break Stage::Local,
-                        other => eprintln!(
-                            "\"{}\" is not a valid stage; must be one of: prod, sandbox, qa, dev, local",
-                            other
-                        ),
-                    }
-                };
-
-                config.profiles.insert(
-                    name.clone(),
-                    Profile {
-                        organization,
-                        stage,
-                    },
-                );
-            }
-            config.default = Some(name.clone());
-            save_config(&config)?;
-            println!("Default profile set to \"{}\".", name);
+            commands::profile::set_default(&profile_args.name, &mut config, out)?;
         }
         Commands::Profiles => {
-            let mut names: Vec<&String> = config.profiles.keys().collect();
-            names.sort();
-            for name in names {
-                if config.default.as_deref() == Some(name) {
-                    println!("* {}", name);
-                } else {
-                    println!("  {}", name);
-                }
-            }
+            commands::profile::list(&config, out);
         }
         Commands::Api(api_args) => {
             let (_profile, organization, stage) = resolve_profile(&config, cli.profile.as_deref())?;
