@@ -114,6 +114,16 @@ pub struct ProfilesArgs {
 pub enum ProfilesCommands {
     /// Add a new profile.
     Add(ProfilesAddArgs),
+    /// Remove a profile.
+    Rm(ProfilesRmArgs),
+}
+
+/// Arguments for `profiles rm`.
+#[derive(Args, Debug)]
+pub struct ProfilesRmArgs {
+    /// Profile name to remove.
+    #[arg(value_parser = validate_slug)]
+    pub name: String,
 }
 
 /// Arguments for `profiles add`.

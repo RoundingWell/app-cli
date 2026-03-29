@@ -61,6 +61,9 @@ async fn run(cli: Cli, out: &Output) -> Result<()> {
                     out,
                 )?;
             }
+            Some(ProfilesCommands::Rm(args)) => {
+                commands::profile::rm(&args.name, &mut config, out)?;
+            }
         },
         Commands::Api(api_args) => {
             let (_profile, organization, stage) = resolve_profile(&config, cli.profile.as_deref())?;

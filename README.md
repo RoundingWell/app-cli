@@ -52,7 +52,8 @@ Stage-to-domain mapping:
 
 ```sh
 rw profiles                 # List all configured profiles
-rw profiles add mercy       # Adds the "mercy" profile (see below)
+rw profiles add mercy       # Add the "mercy" profile (see below)
+rw profiles rm mercy        # Remove the "mercy" profile
 rw profile mercy            # Set "mercy" as the default profile (profile must already exist)
 ```
 
