@@ -16,6 +16,7 @@ tokio = { version = "1", features = ["full"] }
 anyhow = "1"
 base64 = "0.22"
 dirs = "5"
+write_atomic = "0.7"
 webbrowser = "1"
 jaq-core = "3.0.0"
 jaq-std = "3.0.0"
