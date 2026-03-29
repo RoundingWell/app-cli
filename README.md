@@ -26,6 +26,24 @@
 
 The `rw` command line interface for [RoundingWell](https://www.roundingwell.com/).
 
+## Installation
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/RoundingWell/app-cli/main/install.sh | bash
+```
+
+**Options** (via environment variables):
+
+| Variable      | Description                                  | Default         |
+|---------------|----------------------------------------------|-----------------|
+| `RW_BIN_DIR`  | Where to install the binary                  | `~/.local/bin`  |
+| `RW_VERSION`  | Specific version to install                  | latest          |
+
+```sh
+# Install a specific version
+RW_VERSION=1.2.3 bash -c "$(curl -fsSL https://raw.githubusercontent.com/RoundingWell/app-cli/main/install.sh)"
+```
+
 ## Usage
 
 ### Global options
