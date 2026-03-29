@@ -7,6 +7,9 @@
 # Options (via environment):
 #   RW_BIN_DIR    Where to install binary (default: ~/.local/bin)
 #   RW_VERSION    Specific version to install (default: latest)
+#
+# To pass environment variables, use:
+#   RW_VERSION=1.2.3 bash -c "$(curl -fsSL https://raw.githubusercontent.com/RoundingWell/app-cli/main/install.sh)"
 
 set -euo pipefail
 
