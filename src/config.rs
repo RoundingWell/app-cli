@@ -23,6 +23,8 @@ pub struct Config {
     pub default: Option<String>,
     #[serde(default)]
     pub profiles: BTreeMap<String, Profile>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auto_update: Option<bool>,
 }
 
 /// A named profile linking a profile name to an organization + stage.

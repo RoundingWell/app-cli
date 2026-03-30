@@ -100,6 +100,8 @@ pub enum Commands {
     Profile(ProfileArgs),
     /// List and manage profiles.
     Profiles(ProfilesArgs),
+    /// Update rw to the latest version.
+    Update,
 }
 
 /// Arguments for the `profile` subcommand.

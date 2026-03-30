@@ -148,6 +148,21 @@ Stage-to-domain mapping:
 | `dev`     | `https://{organization}.roundingwell.dev`         |
 | `local`   | `http://localhost:8080`                           |
 
+### Updates
+
+```sh
+rw update   # Update rw to the latest version
+```
+
+When a newer version is detected while running any command, the CLI will prompt once (on interactive terminals) whether to enable automatic updates:
+
+```
+A new version of rw is available: 0.4.0 (you have 0.3.1)
+Enable automatic updates? [y/N]
+```
+
+The preference is stored as `auto_update` in `~/.config/rw/config.json`. Once set, no further prompting occurs — the CLI either updates silently before each command (if enabled) or shows a warning (if disabled). Automatic updates can be re-enabled or disabled at any time by editing `auto_update` in the config file directly.
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development instructions.

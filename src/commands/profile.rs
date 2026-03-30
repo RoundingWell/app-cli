@@ -230,6 +230,7 @@ mod tests {
             version: None,
             default: None,
             profiles,
+            auto_update: None,
         }
     }
 
@@ -248,6 +249,7 @@ mod tests {
             version: None,
             default: None,
             profiles: BTreeMap::new(),
+            auto_update: None,
         };
         let err = set_default("missing", &mut config, &path, &out_plain()).unwrap_err();
         assert!(err.to_string().contains("does not exist"));
@@ -339,6 +341,7 @@ mod tests {
             version: None,
             default: None,
             profiles: BTreeMap::new(),
+            auto_update: None,
         };
         let err = add(
             "demo",
@@ -359,6 +362,7 @@ mod tests {
             version: None,
             default: None,
             profiles: BTreeMap::new(),
+            auto_update: None,
         };
         let err = add(
             "demo",
@@ -429,6 +433,7 @@ mod tests {
             version: None,
             default: None,
             profiles: BTreeMap::new(),
+            auto_update: None,
         };
         let err = rm("missing", &mut config, &path, &out_plain()).unwrap_err();
         assert!(err.to_string().contains("does not exist"));
