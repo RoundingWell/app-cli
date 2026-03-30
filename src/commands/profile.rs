@@ -1,12 +1,18 @@
 use anyhow::Result;
 use serde::Serialize;
+use std::path::Path;
 
 use crate::cli::{validate_slug, Stage};
-use crate::config::{save_config, Config, Profile};
+use crate::config::{save_config_to, Config, Profile};
 use crate::output::{CommandOutput, Output};
 
 /// Run `rw profile <name>` – set the named profile as default. Errors if the profile does not exist.
-pub fn set_default(name: &str, config: &mut Config, out: &Output) -> Result<()> {
+pub fn set_default(
+    name: &str,
+    config: &mut Config,
+    config_path: &Path,
+    out: &Output,
+) -> Result<()> {
     if !config.profiles.contains_key(name) {
         anyhow::bail!(
             "profile '{}' does not exist; use 'rw profiles add {}' to add it",
@@ -15,7 +21,7 @@ pub fn set_default(name: &str, config: &mut Config, out: &Output) -> Result<()> 
         );
     }
     config.default = Some(name.to_string());
-    save_config(config)?;
+    save_config_to(config, config_path)?;
     out.print(&SetDefaultOutput {
         name: name.to_string(),
     });
@@ -75,6 +81,7 @@ pub fn add(
     organization: Option<String>,
     stage: Option<Stage>,
     config: &mut Config,
+    config_path: &Path,
     out: &Output,
 ) -> Result<()> {
     if config.profiles.contains_key(name) {
@@ -97,7 +104,7 @@ pub fn add(
             stage: stage.clone(),
         },
     );
-    save_config(config)?;
+    save_config_to(config, config_path)?;
     out.print(&AddOutput {
         name: name.to_string(),
         organization,
@@ -107,7 +114,7 @@ pub fn add(
 }
 
 /// Run `rw profiles rm <name>` – remove a profile. Clears the default if it was the removed profile.
-pub fn rm(name: &str, config: &mut Config, out: &Output) -> Result<()> {
+pub fn rm(name: &str, config: &mut Config, config_path: &Path, out: &Output) -> Result<()> {
     if !config.profiles.contains_key(name) {
         anyhow::bail!("profile '{}' does not exist", name);
     }
@@ -115,7 +122,7 @@ pub fn rm(name: &str, config: &mut Config, out: &Output) -> Result<()> {
     if config.default.as_deref() == Some(name) {
         config.default = None;
     }
-    save_config(config)?;
+    save_config_to(config, config_path)?;
     out.print(&RmOutput {
         name: name.to_string(),
     });
@@ -204,6 +211,12 @@ mod tests {
         Output { json: true }
     }
 
+    fn tmp_path() -> (tempfile::NamedTempFile, std::path::PathBuf) {
+        let f = tempfile::NamedTempFile::new().unwrap();
+        let p = f.path().to_path_buf();
+        (f, p)
+    }
+
     fn config_with_profile(name: &str, org: &str, stage: Stage) -> Config {
         let mut profiles = BTreeMap::new();
         profiles.insert(
@@ -229,11 +242,12 @@ mod tests {
 
     #[test]
     fn test_set_default_errors_when_profile_not_found() {
+        let (_tmp, path) = tmp_path();
         let mut config = Config {
             default: None,
             profiles: BTreeMap::new(),
         };
-        let err = set_default("missing", &mut config, &out_plain()).unwrap_err();
+        let err = set_default("missing", &mut config, &path, &out_plain()).unwrap_err();
         assert!(err.to_string().contains("does not exist"));
         assert!(err.to_string().contains("profiles add missing"));
     }
@@ -302,12 +316,14 @@ mod tests {
 
     #[test]
     fn test_create_errors_when_profile_already_exists() {
+        let (_tmp, path) = tmp_path();
         let mut config = config_with_profile("demo", "mercy", Stage::Prod);
         let err = add(
             "demo",
             Some("mercy".to_string()),
             Some(Stage::Prod),
             &mut config,
+            &path,
             &out_plain(),
         )
         .unwrap_err();
@@ -316,16 +332,26 @@ mod tests {
 
     #[test]
     fn test_create_errors_with_json_flag_when_organization_missing() {
+        let (_tmp, path) = tmp_path();
         let mut config = Config {
             default: None,
             profiles: BTreeMap::new(),
         };
-        let err = add("demo", None, Some(Stage::Prod), &mut config, &out_json()).unwrap_err();
+        let err = add(
+            "demo",
+            None,
+            Some(Stage::Prod),
+            &mut config,
+            &path,
+            &out_json(),
+        )
+        .unwrap_err();
         assert!(err.to_string().contains("--json"));
     }
 
     #[test]
     fn test_create_errors_with_json_flag_when_stage_missing() {
+        let (_tmp, path) = tmp_path();
         let mut config = Config {
             default: None,
             profiles: BTreeMap::new(),
@@ -335,6 +361,7 @@ mod tests {
             Some("mercy".to_string()),
             None,
             &mut config,
+            &path,
             &out_json(),
         )
         .unwrap_err();
@@ -360,21 +387,24 @@ mod tests {
 
     #[test]
     fn test_rm_removes_profile() {
+        let (_tmp, path) = tmp_path();
         let mut config = config_with_profile("demo", "mercy", Stage::Prod);
-        rm("demo", &mut config, &out_plain()).unwrap();
+        rm("demo", &mut config, &path, &out_plain()).unwrap();
         assert!(!config.profiles.contains_key("demo"));
     }
 
     #[test]
     fn test_rm_clears_default_when_removed() {
+        let (_tmp, path) = tmp_path();
         let mut config = config_with_profile("demo", "mercy", Stage::Prod);
         config.default = Some("demo".to_string());
-        rm("demo", &mut config, &out_plain()).unwrap();
+        rm("demo", &mut config, &path, &out_plain()).unwrap();
         assert!(config.default.is_none());
     }
 
     #[test]
     fn test_rm_leaves_default_when_other_profile_removed() {
+        let (_tmp, path) = tmp_path();
         let mut config = config_with_profile("demo", "mercy", Stage::Prod);
         config.profiles.insert(
             "other".to_string(),
@@ -384,17 +414,18 @@ mod tests {
             },
         );
         config.default = Some("demo".to_string());
-        rm("other", &mut config, &out_plain()).unwrap();
+        rm("other", &mut config, &path, &out_plain()).unwrap();
         assert_eq!(config.default.as_deref(), Some("demo"));
     }
 
     #[test]
     fn test_rm_errors_when_profile_not_found() {
+        let (_tmp, path) = tmp_path();
         let mut config = Config {
             default: None,
             profiles: BTreeMap::new(),
         };
-        let err = rm("missing", &mut config, &out_plain()).unwrap_err();
+        let err = rm("missing", &mut config, &path, &out_plain()).unwrap_err();
         assert!(err.to_string().contains("does not exist"));
     }
 }

@@ -10,7 +10,7 @@ use clap::Parser;
 
 use api::resolve_api;
 use cli::{AuthCommands, Cli, Commands, ProfilesCommands};
-use config::{load_config, resolve_profile};
+use config::{config_path, load_config, resolve_profile};
 use output::Output;
 
 #[tokio::main]
@@ -25,7 +25,8 @@ async fn main() {
 }
 
 async fn run(cli: Cli, out: &Output) -> Result<()> {
-    let mut config = load_config()?;
+    let cfg_path = config_path()?;
+    let mut config = load_config(&cfg_path)?;
 
     match cli.command {
         Commands::Auth(auth_args) => {
@@ -46,7 +47,7 @@ async fn run(cli: Cli, out: &Output) -> Result<()> {
             }
         }
         Commands::Profile(profile_args) => {
-            commands::profile::set_default(&profile_args.name, &mut config, out)?;
+            commands::profile::set_default(&profile_args.name, &mut config, &cfg_path, out)?;
         }
         Commands::Profiles(profiles_args) => match profiles_args.command {
             None => {
@@ -58,11 +59,12 @@ async fn run(cli: Cli, out: &Output) -> Result<()> {
                     args.organization,
                     args.stage,
                     &mut config,
+                    &cfg_path,
                     out,
                 )?;
             }
             Some(ProfilesCommands::Rm(args)) => {
-                commands::profile::rm(&args.name, &mut config, out)?;
+                commands::profile::rm(&args.name, &mut config, &cfg_path, out)?;
             }
         },
         Commands::Api(api_args) => {
