@@ -605,14 +605,13 @@ mod tests {
     impl TestAuthGuard {
         fn new() -> Self {
             use crate::auth_cache::{save_auth_cache, AuthCache};
-            use crate::cli::Stage;
             let dir = tempfile::TempDir::new().unwrap();
             let cache = AuthCache::Bearer {
                 access_token: "test-token".to_string(),
                 refresh_token: None,
                 expires_at: i64::MAX,
             };
-            save_auth_cache(dir.path(), "testorg", &Stage::Dev, &cache).unwrap();
+            save_auth_cache(dir.path(), "test", &cache).unwrap();
             TestAuthGuard { dir }
         }
 

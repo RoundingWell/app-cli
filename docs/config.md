@@ -5,7 +5,7 @@ Configuration of the `rw` tool consists of multiple files:
 | Path          | Contents                                            |
 |---------------|-----------------------------------------------------|
 | `config.json` | Tool configuration                                  |
-| `auth/*.json` | Auth credentials per organization+stage (mode 0600) |
+| `auth/*.json` | Auth credentials per profile (mode 0600) |
 
 By default, `rw` stores these files under `~/.config/rw/`.
 
@@ -13,6 +13,7 @@ By default, `rw` stores these files under `~/.config/rw/`.
 
 ```json
 {
+  "version": "0.3.0",
   "default": "demo",
   "profiles": {
     "demo": {
@@ -27,7 +28,7 @@ By default, `rw` stores these files under `~/.config/rw/`.
 }
 ```
 
-### `auth/{organization}-{stage}.json`
+### `auth/{profile}.json`
 
 Bearer token (written after `rw auth login`):
 

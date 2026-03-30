@@ -3,6 +3,7 @@ mod auth_cache;
 mod cli;
 mod commands;
 mod config;
+mod migration;
 mod output;
 
 use anyhow::Result;
@@ -54,6 +55,7 @@ async fn run(cli: Cli, out: &Output) -> Result<()> {
 
     let cfg_path = config_path(&config_dir);
     let mut config = load_config(&cfg_path)?;
+    migration::run_migrations(&config_dir, &mut config)?;
 
     match cli.command {
         Commands::Auth(auth_args) => {

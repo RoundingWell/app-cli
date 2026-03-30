@@ -227,6 +227,7 @@ mod tests {
             },
         );
         Config {
+            version: None,
             default: None,
             profiles,
         }
@@ -244,6 +245,7 @@ mod tests {
     fn test_set_default_errors_when_profile_not_found() {
         let (_tmp, path) = tmp_path();
         let mut config = Config {
+            version: None,
             default: None,
             profiles: BTreeMap::new(),
         };
@@ -334,6 +336,7 @@ mod tests {
     fn test_create_errors_with_json_flag_when_organization_missing() {
         let (_tmp, path) = tmp_path();
         let mut config = Config {
+            version: None,
             default: None,
             profiles: BTreeMap::new(),
         };
@@ -353,6 +356,7 @@ mod tests {
     fn test_create_errors_with_json_flag_when_stage_missing() {
         let (_tmp, path) = tmp_path();
         let mut config = Config {
+            version: None,
             default: None,
             profiles: BTreeMap::new(),
         };
@@ -422,6 +426,7 @@ mod tests {
     fn test_rm_errors_when_profile_not_found() {
         let (_tmp, path) = tmp_path();
         let mut config = Config {
+            version: None,
             default: None,
             profiles: BTreeMap::new(),
         };
