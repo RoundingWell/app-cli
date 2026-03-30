@@ -84,7 +84,7 @@ pub fn set(
         .unwrap_or_else(prompt_password)?;
 
     let cache = AuthCache::Basic { username, password };
-    save_auth_cache(&ctx.config_dir, &ctx.organization, &ctx.stage, &cache)?;
+    save_auth_cache(&ctx.config_dir, &ctx.profile, &cache)?;
 
     out.print(&BasicSetOutput {
         organization: ctx.organization.clone(),
@@ -123,9 +123,7 @@ mod tests {
         )
         .unwrap();
 
-        let cache = load_auth_cache(dir.path(), "my-org", &Stage::Dev)
-            .unwrap()
-            .unwrap();
+        let cache = load_auth_cache(dir.path(), "test").unwrap().unwrap();
         match cache {
             AuthCache::Basic { username, password } => {
                 assert_eq!(username, "alice");

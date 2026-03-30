@@ -17,6 +17,8 @@ pub struct AppContext {
 /// Root configuration file structure for `~/.config/rw/config.json`.
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct Config {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
     #[serde(rename = "default", default, skip_serializing_if = "Option::is_none")]
     pub default: Option<String>,
     #[serde(default)]

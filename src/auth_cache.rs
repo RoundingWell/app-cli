@@ -2,9 +2,7 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-use crate::cli::Stage;
-
-/// Auth credentials stored per organization+stage in `~/.config/rw/auth/{organization}-{stage}.json`.
+/// Auth credentials stored per profile in `~/.config/rw/auth/{profile}.json`.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(untagged)]
 pub enum AuthCache {
@@ -31,20 +29,14 @@ impl AuthCache {
     }
 }
 
-/// Returns the path to the auth cache file: `{config_dir}/auth/{organization}-{stage}.json`.
-pub fn auth_cache_path(config_dir: &Path, organization: &str, stage: &Stage) -> PathBuf {
-    config_dir
-        .join("auth")
-        .join(format!("{}-{}.json", organization, stage))
+/// Returns the path to the auth cache file: `{config_dir}/auth/{profile}.json`.
+pub fn auth_cache_path(config_dir: &Path, profile: &str) -> PathBuf {
+    config_dir.join("auth").join(format!("{}.json", profile))
 }
 
-/// Loads the auth cache for the given organization+stage. Returns `None` if no cache exists.
-pub fn load_auth_cache(
-    config_dir: &Path,
-    organization: &str,
-    stage: &Stage,
-) -> Result<Option<AuthCache>> {
-    let path = auth_cache_path(config_dir, organization, stage);
+/// Loads the auth cache for the given profile. Returns `None` if no cache exists.
+pub fn load_auth_cache(config_dir: &Path, profile: &str) -> Result<Option<AuthCache>> {
+    let path = auth_cache_path(config_dir, profile);
     if !path.exists() {
         return Ok(None);
     }
@@ -55,15 +47,10 @@ pub fn load_auth_cache(
     Ok(Some(cache))
 }
 
-/// Persists the auth cache for the given organization+stage, creating directories as needed.
+/// Persists the auth cache for the given profile, creating directories as needed.
 /// The file is written with mode 0600 (owner read/write only) on Unix.
-pub fn save_auth_cache(
-    config_dir: &Path,
-    organization: &str,
-    stage: &Stage,
-    cache: &AuthCache,
-) -> Result<()> {
-    let path = auth_cache_path(config_dir, organization, stage);
+pub fn save_auth_cache(config_dir: &Path, profile: &str, cache: &AuthCache) -> Result<()> {
+    let path = auth_cache_path(config_dir, profile);
     if let Some(parent) = path.parent() {
         create_private_dir(parent)
             .with_context(|| format!("could not create auth directory: {}", parent.display()))?;
@@ -100,10 +87,10 @@ fn write_private_file(path: &std::path::Path, contents: &str) -> Result<()> {
     Ok(())
 }
 
-/// Deletes the auth cache file for the given organization+stage.
+/// Deletes the auth cache file for the given profile.
 /// Returns `true` if a file was removed, `false` if none existed.
-pub fn delete_auth_cache(config_dir: &Path, organization: &str, stage: &Stage) -> Result<bool> {
-    let path = auth_cache_path(config_dir, organization, stage);
+pub fn delete_auth_cache(config_dir: &Path, profile: &str) -> Result<bool> {
+    let path = auth_cache_path(config_dir, profile);
     if path.exists() {
         std::fs::remove_file(&path)
             .with_context(|| format!("could not remove auth cache: {}", path.display()))?;
@@ -130,15 +117,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_auth_cache_path_prod() {
-        let path = auth_cache_path(Path::new("/cfg"), "demonstration", &Stage::Prod);
-        assert!(path.ends_with("auth/demonstration-prod.json"));
+    fn test_auth_cache_path() {
+        let path = auth_cache_path(Path::new("/cfg"), "demonstration");
+        assert!(path.ends_with("auth/demonstration.json"));
     }
 
     #[test]
-    fn test_auth_cache_path_sandbox() {
-        let path = auth_cache_path(Path::new("/cfg"), "mercy", &Stage::Sandbox);
-        assert!(path.ends_with("auth/mercy-sandbox.json"));
+    fn test_auth_cache_path_other() {
+        let path = auth_cache_path(Path::new("/cfg"), "mercy");
+        assert!(path.ends_with("auth/mercy.json"));
     }
 
     #[test]

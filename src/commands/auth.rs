@@ -213,7 +213,7 @@ pub async fn login(ctx: &AppContext, out: &Output) -> Result<()> {
                 refresh_token: token.refresh_token,
                 expires_at: expires_at_from_duration(token.expires_in),
             };
-            save_auth_cache(&ctx.config_dir, &ctx.organization, &ctx.stage, &cache)?;
+            save_auth_cache(&ctx.config_dir, &ctx.profile, &cache)?;
 
             out.print(&MessageOutput {
                 message: format!(
@@ -252,7 +252,7 @@ pub async fn login(ctx: &AppContext, out: &Output) -> Result<()> {
 
 /// Run `rw auth status` – report whether stored credentials exist.
 pub fn status(ctx: &AppContext, out: &Output) -> Result<()> {
-    match load_auth_cache(&ctx.config_dir, &ctx.organization, &ctx.stage)? {
+    match load_auth_cache(&ctx.config_dir, &ctx.profile)? {
         Some(ref cache @ AuthCache::Bearer { .. }) => {
             out.print(&StatusOutput {
                 auth_type: Some("bearer".to_string()),
@@ -315,7 +315,7 @@ pub async fn header(ctx: &AppContext, out: &Output) -> Result<()> {
 
 /// Run `rw auth logout` – remove stored credentials for the profile.
 pub fn logout(ctx: &AppContext, out: &Output) -> Result<()> {
-    if delete_auth_cache(&ctx.config_dir, &ctx.organization, &ctx.stage)? {
+    if delete_auth_cache(&ctx.config_dir, &ctx.profile)? {
         out.print(&MessageOutput {
             message: format!("✓ Credentials for profile '{}' removed.", ctx.profile),
         });
@@ -337,7 +337,7 @@ pub enum ResolvedAuth {
 /// For bearer tokens, automatically refreshes if expired.
 /// Returns `None` if no credentials are stored.
 pub async fn resolve_auth(ctx: &AppContext) -> Result<Option<ResolvedAuth>> {
-    let Some(cache) = load_auth_cache(&ctx.config_dir, &ctx.organization, &ctx.stage)? else {
+    let Some(cache) = load_auth_cache(&ctx.config_dir, &ctx.profile)? else {
         return Ok(None);
     };
 
@@ -365,7 +365,7 @@ pub async fn resolve_auth(ctx: &AppContext) -> Result<Option<ResolvedAuth>> {
                 .await
                 .context("token refresh failed; run `rw auth login` to re-authenticate")?;
 
-            save_auth_cache(&ctx.config_dir, &ctx.organization, &ctx.stage, &new_cache)?;
+            save_auth_cache(&ctx.config_dir, &ctx.profile, &new_cache)?;
 
             match new_cache {
                 AuthCache::Bearer { access_token, .. } => {
