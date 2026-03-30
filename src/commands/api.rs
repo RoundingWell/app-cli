@@ -4,16 +4,13 @@ use jaq_core::{data, unwrap_valr, Compiler, Ctx, Vars};
 use jaq_json::{read, Val};
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use std::collections::HashMap;
-use std::path::Path;
 
-use crate::cli::Stage;
+use crate::config::AppContext;
 
 /// Run `rw api <endpoint>` – make an HTTP request to the RoundingWell API.
 ///
 /// # Arguments
-/// * `base_url`      – resolved API URI (e.g. `https://demonstration.roundingwell.com/api`)
-/// * `organization`  – organization slug, used to resolve auth credentials
-/// * `stage`         – deployment stage, used to resolve auth credentials
+/// * `ctx`           – resolved application context (includes base URL, org, stage, auth dir)
 /// * `endpoint`      – API path (e.g. `clinicians`, `clinicians/60fda0c4-eca0-434a-80d8-fd4e490aa051`)
 /// * `method`        – HTTP verb (e.g. `GET`, `POST`)
 /// * `extra_headers` – additional raw header strings (`"Name: value"`)
@@ -21,10 +18,7 @@ use crate::cli::Stage;
 /// * `jq`            – optional jq filter expression to apply to the response
 /// * `raw`           – if true, print raw JSON; otherwise pretty-print
 pub async fn run(
-    config_dir: &Path,
-    base_url: &str,
-    organization: &str,
-    stage: &Stage,
+    ctx: &AppContext,
     endpoint: &str,
     method: &str,
     extra_headers: &[String],
@@ -34,7 +28,7 @@ pub async fn run(
 ) -> Result<()> {
     // Strip leading slash from endpoint so we can join cleanly.
     let endpoint = endpoint.trim_start_matches('/');
-    let url = format!("{}/{}", base_url.trim_end_matches('/'), endpoint);
+    let url = format!("{}/{}", ctx.base_url.trim_end_matches('/'), endpoint);
 
     // Determine the effective HTTP method: if fields are supplied without an
     // explicit override we default to POST.
@@ -53,7 +47,7 @@ pub async fn run(
     );
 
     // Attach authentication header if credentials are stored.
-    req = super::auth::attach_auth(config_dir, req, organization, stage).await?;
+    req = super::auth::attach_auth(ctx, req).await?;
 
     // Parse and attach extra headers supplied via -H.
     let mut header_map = HeaderMap::new();

@@ -5,6 +5,15 @@ use std::path::{Path, PathBuf};
 
 use crate::cli::Stage;
 
+/// Resolved application context: the config directory plus the active profile's values.
+pub struct AppContext {
+    pub config_dir: PathBuf,
+    pub profile: String,
+    pub organization: String,
+    pub stage: Stage,
+    pub base_url: String,
+}
+
 /// Root configuration file structure for `~/.config/rw/config.json`.
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct Config {

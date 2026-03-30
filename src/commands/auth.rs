@@ -1,6 +1,5 @@
 use anyhow::{bail, Context, Result};
 use serde::Serialize;
-use std::path::Path;
 use std::time::Duration;
 use tokio::time::sleep;
 
@@ -8,6 +7,7 @@ use crate::auth_cache::{
     delete_auth_cache, expires_at_from_duration, load_auth_cache, save_auth_cache, AuthCache,
 };
 use crate::cli::Stage;
+use crate::config::AppContext;
 use crate::output::{CommandOutput, Output};
 
 struct WorkOsConfig {
@@ -131,18 +131,12 @@ impl CommandOutput for HeaderOutput {
 
 /// Run `rw auth login` – use the OAuth Device Authorization Flow to authenticate
 /// via WorkOS AuthKit, poll for a token, and persist credentials.
-pub async fn login(
-    config_dir: &Path,
-    profile: &str,
-    organization: &str,
-    stage: &Stage,
-    out: &Output,
-) -> Result<()> {
+pub async fn login(ctx: &AppContext, out: &Output) -> Result<()> {
     if out.json {
         anyhow::bail!("`rw auth login` is interactive and cannot be used with --json");
     }
 
-    let wos = workos_config(stage);
+    let wos = workos_config(&ctx.stage);
     let client = reqwest::Client::new();
 
     // Step 1: Request device authorization.
@@ -219,12 +213,12 @@ pub async fn login(
                 refresh_token: token.refresh_token,
                 expires_at: expires_at_from_duration(token.expires_in),
             };
-            save_auth_cache(config_dir, organization, stage, &cache)?;
+            save_auth_cache(&ctx.config_dir, &ctx.organization, &ctx.stage, &cache)?;
 
             out.print(&MessageOutput {
                 message: format!(
                     "✓ Authenticated successfully. Credentials saved for profile '{}'.",
-                    profile
+                    ctx.profile
                 ),
             });
             return Ok(());
@@ -257,21 +251,15 @@ pub async fn login(
 }
 
 /// Run `rw auth status` – report whether stored credentials exist.
-pub fn status(
-    config_dir: &Path,
-    profile: &str,
-    organization: &str,
-    stage: &Stage,
-    out: &Output,
-) -> Result<()> {
-    match load_auth_cache(config_dir, organization, stage)? {
+pub fn status(ctx: &AppContext, out: &Output) -> Result<()> {
+    match load_auth_cache(&ctx.config_dir, &ctx.organization, &ctx.stage)? {
         Some(ref cache @ AuthCache::Bearer { .. }) => {
             out.print(&StatusOutput {
                 auth_type: Some("bearer".to_string()),
                 authenticated: true,
                 expired: cache.is_expired(),
                 username: None,
-                profile: profile.to_string(),
+                profile: ctx.profile.clone(),
             });
         }
         Some(AuthCache::Basic { ref username, .. }) => {
@@ -280,7 +268,7 @@ pub fn status(
                 authenticated: true,
                 expired: false,
                 username: Some(username.clone()),
-                profile: profile.to_string(),
+                profile: ctx.profile.clone(),
             });
         }
         None => {
@@ -289,7 +277,7 @@ pub fn status(
                 authenticated: false,
                 expired: false,
                 username: None,
-                profile: profile.to_string(),
+                profile: ctx.profile.clone(),
             });
         }
     }
@@ -311,13 +299,8 @@ pub fn auth_header_value(auth: &ResolvedAuth) -> String {
 /// Run `rw auth header` – print the Authorization header value for API requests.
 /// For bearer tokens, prints `Bearer <token>` (refreshing if expired).
 /// For basic credentials, prints `Basic <base64(username:password)>`.
-pub async fn header(
-    config_dir: &Path,
-    organization: &str,
-    stage: &Stage,
-    out: &Output,
-) -> Result<()> {
-    match resolve_auth(config_dir, organization, stage).await? {
+pub async fn header(ctx: &AppContext, out: &Output) -> Result<()> {
+    match resolve_auth(ctx).await? {
         Some(ref auth) => {
             out.print(&HeaderOutput {
                 header: auth_header_value(auth),
@@ -331,20 +314,14 @@ pub async fn header(
 }
 
 /// Run `rw auth logout` – remove stored credentials for the profile.
-pub fn logout(
-    config_dir: &Path,
-    profile: &str,
-    organization: &str,
-    stage: &Stage,
-    out: &Output,
-) -> Result<()> {
-    if delete_auth_cache(config_dir, organization, stage)? {
+pub fn logout(ctx: &AppContext, out: &Output) -> Result<()> {
+    if delete_auth_cache(&ctx.config_dir, &ctx.organization, &ctx.stage)? {
         out.print(&MessageOutput {
-            message: format!("✓ Credentials for profile '{}' removed.", profile),
+            message: format!("✓ Credentials for profile '{}' removed.", ctx.profile),
         });
     } else {
         out.print(&MessageOutput {
-            message: format!("No stored credentials found for profile '{}'.", profile),
+            message: format!("No stored credentials found for profile '{}'.", ctx.profile),
         });
     }
     Ok(())
@@ -359,12 +336,8 @@ pub enum ResolvedAuth {
 /// Resolves auth credentials for the given organization+stage, loading the cache once.
 /// For bearer tokens, automatically refreshes if expired.
 /// Returns `None` if no credentials are stored.
-pub async fn resolve_auth(
-    config_dir: &Path,
-    organization: &str,
-    stage: &Stage,
-) -> Result<Option<ResolvedAuth>> {
-    let Some(cache) = load_auth_cache(config_dir, organization, stage)? else {
+pub async fn resolve_auth(ctx: &AppContext) -> Result<Option<ResolvedAuth>> {
+    let Some(cache) = load_auth_cache(&ctx.config_dir, &ctx.organization, &ctx.stage)? else {
         return Ok(None);
     };
 
@@ -388,11 +361,11 @@ pub async fn resolve_auth(
                 _ => bail!("authentication token expired; run `rw auth login` to re-authenticate"),
             };
 
-            let new_cache = try_refresh(stage, &refresh_token)
+            let new_cache = try_refresh(&ctx.stage, &refresh_token)
                 .await
                 .context("token refresh failed; run `rw auth login` to re-authenticate")?;
 
-            save_auth_cache(config_dir, organization, stage, &new_cache)?;
+            save_auth_cache(&ctx.config_dir, &ctx.organization, &ctx.stage, &new_cache)?;
 
             match new_cache {
                 AuthCache::Bearer { access_token, .. } => {
@@ -441,12 +414,10 @@ async fn try_refresh(stage: &Stage, refresh_token: &str) -> Result<AuthCache> {
 /// Attaches stored credentials to `req`. Returns the request unmodified if no
 /// credentials are stored (the caller will receive a 401 from the API).
 pub async fn attach_auth(
-    config_dir: &Path,
+    ctx: &AppContext,
     req: reqwest::RequestBuilder,
-    organization: &str,
-    stage: &Stage,
 ) -> Result<reqwest::RequestBuilder> {
-    Ok(match resolve_auth(config_dir, organization, stage).await? {
+    Ok(match resolve_auth(ctx).await? {
         Some(ResolvedAuth::Bearer(token)) => {
             req.header(reqwest::header::AUTHORIZATION, format!("Bearer {}", token))
         }
