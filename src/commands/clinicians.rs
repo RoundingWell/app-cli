@@ -320,27 +320,27 @@ mod tests {
     use super::*;
     use mockito::Server;
 
-    /// Writes a fake Bearer token to the testorg-dev auth cache so that `require_auth`
-    /// succeeds. Deletes the file on drop. Safe with parallel tests: the public functions
-    /// resolve auth once and hold it in memory, so a concurrent drop doesn't affect them.
-    struct TestAuthGuard;
+    /// Writes a fake Bearer token to the auth cache for the given org so that `require_auth`
+    /// succeeds. Deletes the file on drop. Each test should use a unique org name to avoid
+    /// races between parallel tests sharing the same auth cache file.
+    struct TestAuthGuard(String);
 
     impl TestAuthGuard {
-        fn new() -> Self {
+        fn new(org: &str) -> Self {
             use crate::auth_cache::{save_auth_cache, AuthCache};
             let cache = AuthCache::Bearer {
                 access_token: "test-token".to_string(),
                 refresh_token: None,
                 expires_at: i64::MAX,
             };
-            save_auth_cache("testorg", &Stage::Dev, &cache).unwrap();
-            TestAuthGuard
+            save_auth_cache(org, &Stage::Dev, &cache).unwrap();
+            TestAuthGuard(org.to_string())
         }
     }
 
     impl Drop for TestAuthGuard {
         fn drop(&mut self) {
-            let _ = crate::auth_cache::delete_auth_cache("testorg", &Stage::Dev);
+            let _ = crate::auth_cache::delete_auth_cache(&self.0, &Stage::Dev);
         }
     }
 
@@ -371,7 +371,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_enable_by_uuid() {
-        let _auth = TestAuthGuard::new();
+        let _auth = TestAuthGuard::new("testorg-enable-uuid");
         let mut server = Server::new_async().await;
         let uuid = "11111111-1111-1111-1111-111111111111";
         let mock = server
@@ -383,16 +383,22 @@ mod tests {
             .await;
 
         let out = Output { json: false };
-        enable(&server.url(), "testorg", &Stage::Dev, uuid, &out)
-            .await
-            .unwrap();
+        enable(
+            &server.url(),
+            "testorg-enable-uuid",
+            &Stage::Dev,
+            uuid,
+            &out,
+        )
+        .await
+        .unwrap();
 
         mock.assert_async().await;
     }
 
     #[tokio::test]
     async fn test_disable_by_uuid() {
-        let _auth = TestAuthGuard::new();
+        let _auth = TestAuthGuard::new("testorg-disable-uuid");
         let mut server = Server::new_async().await;
         let uuid = "22222222-2222-2222-2222-222222222222";
         let mock = server
@@ -404,16 +410,22 @@ mod tests {
             .await;
 
         let out = Output { json: false };
-        disable(&server.url(), "testorg", &Stage::Dev, uuid, &out)
-            .await
-            .unwrap();
+        disable(
+            &server.url(),
+            "testorg-disable-uuid",
+            &Stage::Dev,
+            uuid,
+            &out,
+        )
+        .await
+        .unwrap();
 
         mock.assert_async().await;
     }
 
     #[tokio::test]
     async fn test_enable_by_email_looks_up_uuid() {
-        let _auth = TestAuthGuard::new();
+        let _auth = TestAuthGuard::new("testorg-enable-email");
         let mut server = Server::new_async().await;
         let uuid = "33333333-3333-3333-3333-333333333333";
         let email = "carol@example.com";
@@ -435,9 +447,15 @@ mod tests {
             .await;
 
         let out = Output { json: false };
-        enable(&server.url(), "testorg", &Stage::Dev, email, &out)
-            .await
-            .unwrap();
+        enable(
+            &server.url(),
+            "testorg-enable-email",
+            &Stage::Dev,
+            email,
+            &out,
+        )
+        .await
+        .unwrap();
 
         get_mock.assert_async().await;
         patch_mock.assert_async().await;
@@ -445,7 +463,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_email_not_found_returns_error() {
-        let _auth = TestAuthGuard::new();
+        let _auth = TestAuthGuard::new("testorg-email-not-found");
         let mut server = Server::new_async().await;
         let _mock = server
             .mock("GET", "/clinicians")
@@ -458,7 +476,7 @@ mod tests {
         let out = Output { json: false };
         let result = enable(
             &server.url(),
-            "testorg",
+            "testorg-email-not-found",
             &Stage::Dev,
             "missing@example.com",
             &out,
@@ -473,7 +491,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_email_lookup_is_case_insensitive() {
-        let _auth = TestAuthGuard::new();
+        let _auth = TestAuthGuard::new("testorg-email-case");
         let mut server = Server::new_async().await;
         let uuid = "44444444-4444-4444-4444-444444444444";
 
@@ -501,7 +519,7 @@ mod tests {
         let out = Output { json: false };
         enable(
             &server.url(),
-            "testorg",
+            "testorg-email-case",
             &Stage::Dev,
             "DAVE@EXAMPLE.COM",
             &out,
@@ -577,7 +595,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_assign_by_uuid_and_role_name() {
-        let _auth = TestAuthGuard::new();
+        let _auth = TestAuthGuard::new("testorg-assign-role-name");
         let mut server = Server::new_async().await;
         let clinician_uuid = "55555555-5555-5555-5555-555555555555";
         let role_uuid = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
@@ -606,7 +624,7 @@ mod tests {
         let out = Output { json: false };
         assign(
             &server.url(),
-            "testorg",
+            "testorg-assign-role-name",
             &Stage::Dev,
             clinician_uuid,
             "admin",
@@ -621,7 +639,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_assign_by_email_and_role_uuid() {
-        let _auth = TestAuthGuard::new();
+        let _auth = TestAuthGuard::new("testorg-assign-email-role-uuid");
         let mut server = Server::new_async().await;
         let clinician_uuid = "66666666-6666-6666-6666-666666666666";
         let role_uuid = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
@@ -659,7 +677,7 @@ mod tests {
         let out = Output { json: false };
         assign(
             &server.url(),
-            "testorg",
+            "testorg-assign-email-role-uuid",
             &Stage::Dev,
             email,
             role_uuid,
@@ -675,7 +693,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_assign_role_not_found_returns_error() {
-        let _auth = TestAuthGuard::new();
+        let _auth = TestAuthGuard::new("testorg-assign-role-not-found");
         let mut server = Server::new_async().await;
         let clinician_uuid = "77777777-7777-7777-7777-777777777777";
 
@@ -690,7 +708,7 @@ mod tests {
         let out = Output { json: false };
         let result = assign(
             &server.url(),
-            "testorg",
+            "testorg-assign-role-not-found",
             &Stage::Dev,
             clinician_uuid,
             "nonexistent",
@@ -706,7 +724,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_assign_role_uuid_is_case_insensitive() {
-        let _auth = TestAuthGuard::new();
+        let _auth = TestAuthGuard::new("testorg-assign-role-uuid-case");
         let mut server = Server::new_async().await;
         let clinician_uuid = "88888888-8888-8888-8888-888888888888";
         let role_uuid_lower = "cccccccc-cccc-cccc-cccc-cccccccccccc";
@@ -736,7 +754,7 @@ mod tests {
         let out = Output { json: false };
         assign(
             &server.url(),
-            "testorg",
+            "testorg-assign-role-uuid-case",
             &Stage::Dev,
             clinician_uuid,
             role_uuid_upper,
