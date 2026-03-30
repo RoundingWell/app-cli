@@ -9,7 +9,7 @@ use anyhow::Result;
 use clap::Parser;
 
 use api::resolve_api;
-use cli::{AuthCommands, Cli, Commands, ProfilesCommands};
+use cli::{AuthCommands, Cli, CliniciansCommands, Commands, ProfilesCommands};
 use config::{config_path, load_config, resolve_profile};
 use output::Output;
 
@@ -67,6 +67,43 @@ async fn run(cli: Cli, out: &Output) -> Result<()> {
                 commands::profile::rm(&args.name, &mut config, &cfg_path, out)?;
             }
         },
+        Commands::Clinicians(clinician_args) => {
+            let (_profile, organization, stage) = resolve_profile(&config, cli.profile.as_deref())?;
+            let base_url = resolve_api(&organization, &stage);
+            match clinician_args.command {
+                CliniciansCommands::Assign(args) => {
+                    commands::clinicians::assign(
+                        &base_url,
+                        &organization,
+                        &stage,
+                        &args.target,
+                        &args.role,
+                        out,
+                    )
+                    .await?;
+                }
+                CliniciansCommands::Enable(args) => {
+                    commands::clinicians::enable(
+                        &base_url,
+                        &organization,
+                        &stage,
+                        &args.target,
+                        out,
+                    )
+                    .await?;
+                }
+                CliniciansCommands::Disable(args) => {
+                    commands::clinicians::disable(
+                        &base_url,
+                        &organization,
+                        &stage,
+                        &args.target,
+                        out,
+                    )
+                    .await?;
+                }
+            }
+        }
         Commands::Api(api_args) => {
             let (_profile, organization, stage) = resolve_profile(&config, cli.profile.as_deref())?;
             let base_url = resolve_api(&organization, &stage);

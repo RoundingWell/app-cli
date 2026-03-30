@@ -79,13 +79,28 @@ If either flag is omitted, the CLI prompts for the missing value interactively. 
 ### Authentication
 
 ```sh
-rw auth login              # Open browser and authenticate via WorkOS
-rw auth status             # Show authentication status for current profile
-rw auth status --show      # Also print the stored token or credentials
-rw auth logout             # Remove stored credentials for current profile
+rw auth login       # Open browser and authenticate via WorkOS
+rw auth status      # Show authentication status for current profile
+rw auth header      # Show the authentication header for current profile
+rw auth logout      # Remove stored credentials for current profile
 
 # Use a named profile
 rw auth login --profile mercy
+```
+
+### Clinicians
+
+```sh
+# Enable or disable a clinician (by UUID or email)
+rw clinicians enable joe@example.com
+rw clinicians disable 60fda0c4-eca0-434a-80d8-fd4e490aa051
+
+# Assign a clinician (by UUID or email) a role (by UUID or name)
+rw clinicians assign joe@example.com admin
+rw clinicians assign joe@example.com 60c0e3b8-64b6-491f-a502-7346d14b3192
+
+# Use a named profile
+rw clinicians enable joe@example.com --profile mercy
 ```
 
 ### API requests

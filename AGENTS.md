@@ -15,11 +15,16 @@ cargo fmt               # Format
 
 ## Instructions
 
-- Prefer `rg` to `grep` and `find` when searching files
-- Run `cargo fmt` after changes
+- Use test driven development (TDD) approach; first create tests that fail, then implement to satisfy tests
+- Run `cargo clippy` and `cargo fmt` after changes
 - Run `cargo test` before `cargo build`
-- Use test driven development (TDD) principles; create tests that fail, then implement to satisfy test
 - Prefer unit tests to integration tests, mock network boundaries
+- Update docs when adding or modifying commands
+- Prefer `rg` to `grep` and `find` when searching files
+
+## Important Notes 
+
+- The API always sends and receives data in [JSON:API format](https://jsonapi.org/) (e.g. `{"data": {"type": "clinicians", "id": "<uuid>", "attributes": { ... }}}`)
 
 ## Git Tags
 
