@@ -4,6 +4,7 @@ use jaq_core::{data, unwrap_valr, Compiler, Ctx, Vars};
 use jaq_json::{read, Val};
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use std::collections::HashMap;
+use std::path::Path;
 
 use crate::cli::Stage;
 
@@ -20,6 +21,7 @@ use crate::cli::Stage;
 /// * `jq`            – optional jq filter expression to apply to the response
 /// * `raw`           – if true, print raw JSON; otherwise pretty-print
 pub async fn run(
+    config_dir: &Path,
     base_url: &str,
     organization: &str,
     stage: &Stage,
@@ -51,7 +53,7 @@ pub async fn run(
     );
 
     // Attach authentication header if credentials are stored.
-    req = super::auth::attach_auth(req, organization, stage).await?;
+    req = super::auth::attach_auth(config_dir, req, organization, stage).await?;
 
     // Parse and attach extra headers supplied via -H.
     let mut header_map = HeaderMap::new();

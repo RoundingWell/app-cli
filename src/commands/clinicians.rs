@@ -1,6 +1,7 @@
 use anyhow::{bail, Context, Result};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use std::path::Path;
 use uuid::Uuid;
 
 use crate::cli::Stage;
@@ -84,6 +85,7 @@ impl CommandOutput for ClinicianOutput {
 // --- Public command functions ---
 
 pub async fn assign(
+    config_dir: &Path,
     base_url: &str,
     organization: &str,
     stage: &Stage,
@@ -91,7 +93,7 @@ pub async fn assign(
     role_target: &str,
     out: &Output,
 ) -> Result<()> {
-    let auth_header = require_auth(organization, stage).await?;
+    let auth_header = require_auth(config_dir, organization, stage).await?;
     let client = Client::new();
     let clinician_uuid = if Uuid::parse_str(target).is_ok() {
         target.to_string()
@@ -111,28 +113,40 @@ pub async fn assign(
 }
 
 pub async fn enable(
+    config_dir: &Path,
     base_url: &str,
     organization: &str,
     stage: &Stage,
     target: &str,
     out: &Output,
 ) -> Result<()> {
-    set_enabled(base_url, organization, stage, target, true, out).await
+    set_enabled(config_dir, base_url, organization, stage, target, true, out).await
 }
 
 pub async fn disable(
+    config_dir: &Path,
     base_url: &str,
     organization: &str,
     stage: &Stage,
     target: &str,
     out: &Output,
 ) -> Result<()> {
-    set_enabled(base_url, organization, stage, target, false, out).await
+    set_enabled(
+        config_dir,
+        base_url,
+        organization,
+        stage,
+        target,
+        false,
+        out,
+    )
+    .await
 }
 
 // --- Private helpers ---
 
 async fn set_enabled(
+    config_dir: &Path,
     base_url: &str,
     organization: &str,
     stage: &Stage,
@@ -140,7 +154,7 @@ async fn set_enabled(
     enabled: bool,
     out: &Output,
 ) -> Result<()> {
-    let auth_header = require_auth(organization, stage).await?;
+    let auth_header = require_auth(config_dir, organization, stage).await?;
     let client = Client::new();
     let uuid = if Uuid::parse_str(target).is_ok() {
         target.to_string()
@@ -154,8 +168,8 @@ async fn set_enabled(
 
 /// Resolves auth credentials, returning the `Authorization` header value.
 /// Fails with a friendly message if no credentials are stored.
-async fn require_auth(organization: &str, stage: &Stage) -> Result<String> {
-    super::auth::resolve_auth(organization, stage)
+async fn require_auth(config_dir: &Path, organization: &str, stage: &Stage) -> Result<String> {
+    super::auth::resolve_auth(config_dir, organization, stage)
         .await?
         .map(|a| super::auth::auth_header_value(&a))
         .ok_or_else(|| anyhow::anyhow!("not authenticated – run `rw auth login` first"))
@@ -320,27 +334,27 @@ mod tests {
     use super::*;
     use mockito::Server;
 
-    /// Writes a fake Bearer token to the auth cache for the given org so that `require_auth`
-    /// succeeds. Deletes the file on drop. Each test should use a unique org name to avoid
-    /// races between parallel tests sharing the same auth cache file.
-    struct TestAuthGuard(String);
+    /// Writes a fake Bearer token to a temp config dir so that `require_auth` succeeds.
+    /// The temp directory (and all its contents) is cleaned up on drop.
+    struct TestAuthGuard {
+        dir: tempfile::TempDir,
+    }
 
     impl TestAuthGuard {
-        fn new(org: &str) -> Self {
+        fn new() -> Self {
             use crate::auth_cache::{save_auth_cache, AuthCache};
+            let dir = tempfile::TempDir::new().unwrap();
             let cache = AuthCache::Bearer {
                 access_token: "test-token".to_string(),
                 refresh_token: None,
                 expires_at: i64::MAX,
             };
-            save_auth_cache(org, &Stage::Dev, &cache).unwrap();
-            TestAuthGuard(org.to_string())
+            save_auth_cache(dir.path(), "testorg", &Stage::Dev, &cache).unwrap();
+            TestAuthGuard { dir }
         }
-    }
 
-    impl Drop for TestAuthGuard {
-        fn drop(&mut self) {
-            let _ = crate::auth_cache::delete_auth_cache(&self.0, &Stage::Dev);
+        fn config_dir(&self) -> &std::path::Path {
+            self.dir.path()
         }
     }
 
@@ -371,7 +385,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_enable_by_uuid() {
-        let _auth = TestAuthGuard::new("testorg-enable-uuid");
+        let _auth = TestAuthGuard::new();
         let mut server = Server::new_async().await;
         let uuid = "11111111-1111-1111-1111-111111111111";
         let mock = server
@@ -384,8 +398,9 @@ mod tests {
 
         let out = Output { json: false };
         enable(
+            _auth.config_dir(),
             &server.url(),
-            "testorg-enable-uuid",
+            "testorg",
             &Stage::Dev,
             uuid,
             &out,
@@ -398,7 +413,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_disable_by_uuid() {
-        let _auth = TestAuthGuard::new("testorg-disable-uuid");
+        let _auth = TestAuthGuard::new();
         let mut server = Server::new_async().await;
         let uuid = "22222222-2222-2222-2222-222222222222";
         let mock = server
@@ -411,8 +426,9 @@ mod tests {
 
         let out = Output { json: false };
         disable(
+            _auth.config_dir(),
             &server.url(),
-            "testorg-disable-uuid",
+            "testorg",
             &Stage::Dev,
             uuid,
             &out,
@@ -425,7 +441,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_enable_by_email_looks_up_uuid() {
-        let _auth = TestAuthGuard::new("testorg-enable-email");
+        let _auth = TestAuthGuard::new();
         let mut server = Server::new_async().await;
         let uuid = "33333333-3333-3333-3333-333333333333";
         let email = "carol@example.com";
@@ -448,8 +464,9 @@ mod tests {
 
         let out = Output { json: false };
         enable(
+            _auth.config_dir(),
             &server.url(),
-            "testorg-enable-email",
+            "testorg",
             &Stage::Dev,
             email,
             &out,
@@ -463,7 +480,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_email_not_found_returns_error() {
-        let _auth = TestAuthGuard::new("testorg-email-not-found");
+        let _auth = TestAuthGuard::new();
         let mut server = Server::new_async().await;
         let _mock = server
             .mock("GET", "/clinicians")
@@ -475,8 +492,9 @@ mod tests {
 
         let out = Output { json: false };
         let result = enable(
+            _auth.config_dir(),
             &server.url(),
-            "testorg-email-not-found",
+            "testorg",
             &Stage::Dev,
             "missing@example.com",
             &out,
@@ -491,7 +509,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_email_lookup_is_case_insensitive() {
-        let _auth = TestAuthGuard::new("testorg-email-case");
+        let _auth = TestAuthGuard::new();
         let mut server = Server::new_async().await;
         let uuid = "44444444-4444-4444-4444-444444444444";
 
@@ -518,8 +536,9 @@ mod tests {
 
         let out = Output { json: false };
         enable(
+            _auth.config_dir(),
             &server.url(),
-            "testorg-email-case",
+            "testorg",
             &Stage::Dev,
             "DAVE@EXAMPLE.COM",
             &out,
@@ -595,7 +614,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_assign_by_uuid_and_role_name() {
-        let _auth = TestAuthGuard::new("testorg-assign-role-name");
+        let _auth = TestAuthGuard::new();
         let mut server = Server::new_async().await;
         let clinician_uuid = "55555555-5555-5555-5555-555555555555";
         let role_uuid = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
@@ -623,8 +642,9 @@ mod tests {
 
         let out = Output { json: false };
         assign(
+            _auth.config_dir(),
             &server.url(),
-            "testorg-assign-role-name",
+            "testorg",
             &Stage::Dev,
             clinician_uuid,
             "admin",
@@ -639,7 +659,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_assign_by_email_and_role_uuid() {
-        let _auth = TestAuthGuard::new("testorg-assign-email-role-uuid");
+        let _auth = TestAuthGuard::new();
         let mut server = Server::new_async().await;
         let clinician_uuid = "66666666-6666-6666-6666-666666666666";
         let role_uuid = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
@@ -676,8 +696,9 @@ mod tests {
 
         let out = Output { json: false };
         assign(
+            _auth.config_dir(),
             &server.url(),
-            "testorg-assign-email-role-uuid",
+            "testorg",
             &Stage::Dev,
             email,
             role_uuid,
@@ -693,7 +714,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_assign_role_not_found_returns_error() {
-        let _auth = TestAuthGuard::new("testorg-assign-role-not-found");
+        let _auth = TestAuthGuard::new();
         let mut server = Server::new_async().await;
         let clinician_uuid = "77777777-7777-7777-7777-777777777777";
 
@@ -707,8 +728,9 @@ mod tests {
 
         let out = Output { json: false };
         let result = assign(
+            _auth.config_dir(),
             &server.url(),
-            "testorg-assign-role-not-found",
+            "testorg",
             &Stage::Dev,
             clinician_uuid,
             "nonexistent",
@@ -724,7 +746,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_assign_role_uuid_is_case_insensitive() {
-        let _auth = TestAuthGuard::new("testorg-assign-role-uuid-case");
+        let _auth = TestAuthGuard::new();
         let mut server = Server::new_async().await;
         let clinician_uuid = "88888888-8888-8888-8888-888888888888";
         let role_uuid_lower = "cccccccc-cccc-cccc-cccc-cccccccccccc";
@@ -753,8 +775,9 @@ mod tests {
 
         let out = Output { json: false };
         assign(
+            _auth.config_dir(),
             &server.url(),
-            "testorg-assign-role-uuid-case",
+            "testorg",
             &Stage::Dev,
             clinician_uuid,
             role_uuid_upper,

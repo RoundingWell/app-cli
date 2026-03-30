@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::cli::Stage;
 
@@ -21,10 +21,15 @@ pub struct Profile {
     pub stage: Stage,
 }
 
-/// Returns the path to the config file: `~/.config/rw/config.json`.
-pub fn config_path() -> Result<PathBuf> {
+/// Returns the default config directory: `~/.config/rw`.
+pub fn default_config_dir() -> Result<PathBuf> {
     let home = dirs::home_dir().context("could not determine home directory")?;
-    Ok(home.join(".config").join("rw").join("config.json"))
+    Ok(home.join(".config").join("rw"))
+}
+
+/// Returns the path to the config file within `config_dir`.
+pub fn config_path(config_dir: &Path) -> PathBuf {
+    config_dir.join("config.json")
 }
 
 /// Loads the configuration from disk, returning a default empty config if the
