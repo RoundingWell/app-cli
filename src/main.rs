@@ -5,6 +5,7 @@ mod commands;
 mod config;
 mod migration;
 mod output;
+mod version_check;
 
 use anyhow::Result;
 use clap::Parser;
@@ -56,6 +57,12 @@ async fn run(cli: Cli, out: &Output) -> Result<()> {
     let cfg_path = config_path(&config_dir);
     let mut config = load_config(&cfg_path)?;
     migration::run_migrations(&config_dir, &mut config)?;
+
+    let vc_dir = config_dir.clone();
+    let vc_json = out.json;
+    let vc_task = tokio::spawn(async move {
+        version_check::check_and_warn(&vc_dir, &Output { json: vc_json }).await;
+    });
 
     match cli.command {
         Commands::Auth(auth_args) => {
@@ -136,5 +143,6 @@ async fn run(cli: Cli, out: &Output) -> Result<()> {
         }
     }
 
+    let _ = vc_task.await;
     Ok(())
 }

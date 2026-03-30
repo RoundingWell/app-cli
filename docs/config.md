@@ -2,10 +2,11 @@
 
 Configuration of the `rw` tool consists of multiple files:
 
-| Path          | Contents                                            |
-|---------------|-----------------------------------------------------|
-| `config.json` | Tool configuration                                  |
-| `auth/*.json` | Auth credentials per profile (mode 0600) |
+| Path                 | Contents                                 |
+|----------------------|------------------------------------------|
+| `config.json`        | Tool configuration                       |
+| `version_check.json` | Latest version check information         |
+| `auth/*.json`        | Auth credentials per profile (mode 0600) |
 
 By default, `rw` stores these files under `~/.config/rw/`.
 
