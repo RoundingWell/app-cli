@@ -49,7 +49,7 @@ struct ClinicianSingleResponse {
 
 #[derive(Debug, Deserialize)]
 struct TeamAttributes {
-    abbr: String,
+    name: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -97,7 +97,7 @@ pub struct PrepareOutput {
     pub role_id: String,
     pub role_name: String,
     pub team_id: String,
-    pub team_abbr: String,
+    pub team_name: String,
     pub hidden: bool,
     pub workspace_ids: Vec<String>,
 }
@@ -112,7 +112,7 @@ impl CommandOutput for PrepareOutput {
             self.clinician_id,
             kind,
             self.role_name,
-            self.team_abbr,
+            self.team_name,
             self.hidden,
             ws
         )
@@ -198,7 +198,7 @@ pub async fn prepare(ctx: &AppContext, target: &str, out: &Output) -> Result<()>
     let is_staff = email.to_lowercase().ends_with("@roundingwell.com");
 
     // Step 3: Derive configuration
-    let (role_name_target, team_abbr_target, hidden) = if is_staff {
+    let (role_name_target, team_name_target, hidden) = if is_staff {
         ("rw", "other", true)
     } else {
         ("employee", "nurse", false)
@@ -209,8 +209,8 @@ pub async fn prepare(ctx: &AppContext, target: &str, out: &Output) -> Result<()>
         resolve_role(&client, &ctx.base_url, &auth_header, role_name_target).await?;
 
     // Step 5: Resolve team UUID
-    let (team_id, team_abbr) =
-        resolve_team(&client, &ctx.base_url, &auth_header, team_abbr_target).await?;
+    let (team_id, team_name) =
+        resolve_team(&client, &ctx.base_url, &auth_header, team_name_target).await?;
 
     // Step 6: Fetch default workspace UUIDs
     let workspace_ids =
@@ -255,7 +255,7 @@ pub async fn prepare(ctx: &AppContext, target: &str, out: &Output) -> Result<()>
         role_id,
         role_name,
         team_id,
-        team_abbr,
+        team_name,
         hidden,
         workspace_ids: added_workspace_ids,
     });
@@ -479,7 +479,7 @@ async fn resolve_team(
     client: &Client,
     base_url: &str,
     auth_header: &str,
-    abbr: &str,
+    name: &str,
 ) -> Result<(String, String)> {
     let url = format!("{}/teams", base_url.trim_end_matches('/'));
     let req = apply_auth(client.get(&url), auth_header);
@@ -491,12 +491,12 @@ async fn resolve_team(
     }
     let list: TeamListResponse =
         serde_json::from_str(&body).context("failed to parse teams response")?;
-    let abbr_lower = abbr.to_lowercase();
+    let name_lower = name.to_lowercase();
     list.data
         .into_iter()
-        .find(|t| t.attributes.abbr.to_lowercase() == abbr_lower)
-        .map(|t| (t.id, t.attributes.abbr))
-        .ok_or_else(|| anyhow::anyhow!("no team found with abbr '{}'", abbr))
+        .find(|t| t.attributes.name.to_lowercase() == name_lower)
+        .map(|t| (t.id, t.attributes.name))
+        .ok_or_else(|| anyhow::anyhow!("no team found with name '{}'", name))
 }
 
 async fn fetch_default_clinician_workspace_uuids(
@@ -1028,11 +1028,11 @@ mod tests {
     fn team_list_response(teams: &[(&str, &str)]) -> String {
         let data: Vec<serde_json::Value> = teams
             .iter()
-            .map(|(id, abbr)| {
+            .map(|(id, name)| {
                 serde_json::json!({
                     "type": "teams",
                     "id": id,
-                    "attributes": { "abbr": abbr }
+                    "attributes": { "name": name }
                 })
             })
             .collect();
@@ -1071,7 +1071,7 @@ mod tests {
         role_uuid: &str,
         role_name: &str,
         team_uuid: &str,
-        team_abbr: &str,
+        team_name: &str,
         workspaces: &[(&str, bool)],
     ) -> PrepareMocks {
         server
@@ -1099,7 +1099,7 @@ mod tests {
             .mock("GET", "/teams")
             .with_status(200)
             .with_header("content-type", "application/json")
-            .with_body(team_list_response(&[(team_uuid, team_abbr)]))
+            .with_body(team_list_response(&[(team_uuid, team_name)]))
             .create_async()
             .await;
 
@@ -1426,7 +1426,7 @@ mod tests {
         assert!(result
             .unwrap_err()
             .to_string()
-            .contains("no team found with abbr 'other'"));
+            .contains("no team found with name 'other'"));
     }
 
     #[test]
@@ -1438,7 +1438,7 @@ mod tests {
             role_id: "role-uuid".to_string(),
             role_name: "rw".to_string(),
             team_id: "team-uuid".to_string(),
-            team_abbr: "other".to_string(),
+            team_name: "other".to_string(),
             hidden: true,
             workspace_ids: vec!["ws-uuid-1".to_string(), "ws-uuid-2".to_string()],
         };
@@ -1457,7 +1457,7 @@ mod tests {
             role_id: "role-uuid".to_string(),
             role_name: "employee".to_string(),
             team_id: "team-uuid".to_string(),
-            team_abbr: "nurse".to_string(),
+            team_name: "nurse".to_string(),
             hidden: false,
             workspace_ids: vec![],
         };
@@ -1476,7 +1476,7 @@ mod tests {
             role_id: "role-id".to_string(),
             role_name: "rw".to_string(),
             team_id: "team-id".to_string(),
-            team_abbr: "other".to_string(),
+            team_name: "other".to_string(),
             hidden: true,
             workspace_ids: vec!["ws-1".to_string(), "ws-2".to_string()],
         };
@@ -1487,7 +1487,7 @@ mod tests {
         assert_eq!(json["role_id"], "role-id");
         assert_eq!(json["role_name"], "rw");
         assert_eq!(json["team_id"], "team-id");
-        assert_eq!(json["team_abbr"], "other");
+        assert_eq!(json["team_name"], "other");
         assert_eq!(json["hidden"], true);
         assert_eq!(json["workspace_ids"][0], "ws-1");
         assert_eq!(json["workspace_ids"][1], "ws-2");
