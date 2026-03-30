@@ -1,0 +1,34 @@
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "04:05"
+      timezone: America/Chicago
+    cooldown:
+      default-days: 3
+    commit-message:
+      prefix: build(deps)
+    labels:
+      - dependency
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "04:10"
+      timezone: America/Chicago
+    open-pull-requests-limit: 10
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: ci
+    labels:
+      - ci
