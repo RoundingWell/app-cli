@@ -114,6 +114,9 @@ async fn run(cli: Cli, out: &Output) -> Result<()> {
                 CliniciansCommands::Disable(args) => {
                     commands::clinicians::disable(&ctx, &args.target, out).await?;
                 }
+                CliniciansCommands::Prepare(args) => {
+                    commands::clinicians::prepare(&ctx, &args.target, out).await?;
+                }
             }
         }
         Commands::Api(api_args) => {

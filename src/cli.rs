@@ -166,6 +166,8 @@ pub enum CliniciansCommands {
     Enable(CliniciansTargetArgs),
     /// Disable a clinician by UUID or email.
     Disable(CliniciansTargetArgs),
+    /// Prepare a clinician with the appropriate role, team, and workspace memberships.
+    Prepare(CliniciansTargetArgs),
 }
 
 /// Arguments for `clinicians assign`.
