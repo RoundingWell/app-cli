@@ -1,9 +1,11 @@
+use std::io::{IsTerminal, Write};
 use std::path::Path;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use reqwest::{header, redirect};
 use serde::{Deserialize, Serialize};
 
+use crate::config::{save_config_to, Config};
 use crate::output::Output;
 
 const GITHUB_RELEASES_URL: &str = "https://github.com/RoundingWell/app-cli/releases/latest";
@@ -11,26 +13,104 @@ const CACHE_FILE: &str = "version_check.json";
 const CACHE_TTL_SECS: u64 = 600; // 10 minutes
 const REQUEST_TIMEOUT_SECS: u64 = 5;
 
+/// Compile-time platform identifier matching our GitHub release asset names.
+const SELF_UPDATE_TARGET: &str = if cfg!(all(target_os = "linux", target_arch = "x86_64")) {
+    "linux_amd64"
+} else if cfg!(all(target_os = "linux", target_arch = "aarch64")) {
+    "linux_arm64"
+} else if cfg!(all(target_os = "macos", target_arch = "x86_64")) {
+    "darwin_amd64"
+} else if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+    "darwin_arm64"
+} else {
+    "unknown"
+};
+
 #[derive(Debug, Serialize, Deserialize)]
 struct VersionCache {
     checked_at: u64,
     latest_version: String,
 }
 
-/// Checks whether a newer version of `rw` is available and, if so, emits a
-/// warning via `out.warn()` (stderr).  The check is cached for 10 minutes
-/// in `{config_dir}/version_check.json`.  All errors are silently ignored so
-/// that network or filesystem problems never interrupt normal CLI usage.
-pub async fn check_and_warn(config_dir: &Path, out: &Output) {
-    if let Some(latest) = latest_version(config_dir, GITHUB_RELEASES_URL).await {
-        let current = env!("CARGO_PKG_VERSION");
-        if is_newer(&latest, current) {
-            out.warn(&format!(
-                "A new version of rw is available: {} (you have {})",
-                latest, current
-            ));
+/// Checks for a newer version and handles auto-update behaviour:
+///
+/// - `auto_update = Some(true)`:  update silently with a warning.
+/// - `auto_update = Some(false)`: warn only (existing behaviour).
+/// - `auto_update = None`:        prompt the user once; persist their answer.
+///
+/// All errors are silently ignored so that network or filesystem problems
+/// never interrupt normal CLI usage.
+pub async fn check_and_update(
+    config_dir: &Path,
+    config: &mut Config,
+    cfg_path: &Path,
+    out: &Output,
+) {
+    let Some(latest) = latest_version(config_dir, GITHUB_RELEASES_URL).await else {
+        return;
+    };
+
+    let current = env!("CARGO_PKG_VERSION");
+    if !is_newer(&latest, current) {
+        return;
+    }
+
+    let notice = format!(
+        "A new version of rw is available: {} (you have {})",
+        latest, current
+    );
+
+    match config.auto_update {
+        Some(true) => {
+            out.warn(&format!("Updating rw to {}...", latest));
+            apply_update(out).await;
+        }
+        Some(false) => {
+            out.warn(&notice);
+        }
+        None => {
+            out.warn(&notice);
+            if !out.json && std::io::stdin().is_terminal() {
+                let enable =
+                    tokio::task::spawn_blocking(|| prompt_yes_no("Enable automatic updates?"))
+                        .await
+                        .unwrap_or(false);
+                config.auto_update = Some(enable);
+                let _ = save_config_to(config, cfg_path);
+                if enable {
+                    out.warn(&format!("Updating rw to {}...", latest));
+                    apply_update(out).await;
+                }
+            }
         }
     }
+}
+
+async fn apply_update(out: &Output) {
+    match tokio::task::spawn_blocking(do_update).await {
+        Ok(Ok(_)) => {}
+        Ok(Err(e)) => out.warn(&format!("Auto-update failed: {:#}", e)),
+        Err(_) => out.warn("Auto-update task panicked"),
+    }
+}
+
+/// Downloads and installs the latest release binary from GitHub.
+/// Returns `(version, was_updated)` on success.
+pub fn do_update() -> anyhow::Result<(String, bool)> {
+    let status = self_update::backends::github::Update::configure()
+        .repo_owner("RoundingWell")
+        .repo_name("app-cli")
+        .bin_name("rw")
+        .target(SELF_UPDATE_TARGET)
+        .bin_path_in_archive("rw")
+        .current_version(env!("CARGO_PKG_VERSION"))
+        .no_confirm(true)
+        .show_output(false)
+        .show_download_progress(false)
+        .build()?
+        .update()?;
+
+    Ok((status.version().to_string(), status.updated()))
 }
 
 /// Returns the latest version string, either from cache or from GitHub.
@@ -86,6 +166,14 @@ async fn fetch_latest_version(url: &str) -> Option<String> {
         .rsplit('/')
         .next()
         .map(|s| s.to_string())
+}
+
+fn prompt_yes_no(question: &str) -> bool {
+    eprint!("{} [y/N] ", question);
+    let _ = std::io::stderr().flush();
+    let mut input = String::new();
+    let _ = std::io::stdin().read_line(&mut input);
+    matches!(input.trim().to_lowercase().as_str(), "y" | "yes")
 }
 
 /// Returns true if `candidate` is strictly newer than `current` by semver
@@ -262,10 +350,10 @@ mod tests {
         assert_eq!(version, "1.0.0");
     }
 
-    // ── check_and_warn ───────────────────────────────────────────────────────
+    // ── check_and_update ────────────────────────────────────────────────────
 
     #[tokio::test]
-    async fn test_check_and_warn_emits_to_stderr_when_newer() {
+    async fn test_check_and_update_warns_when_newer_and_auto_update_false() {
         let dir = TempDir::new().unwrap();
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -277,7 +365,34 @@ mod tests {
         };
         save_cache(&dir.path().join(CACHE_FILE), &cache);
 
+        let cfg_path = dir.path().join("config.json");
+        let mut config = Config::default();
+        config.auto_update = Some(false);
+
         let out = Output { json: false };
-        check_and_warn(dir.path(), &out).await; // must not panic
+        // Must not panic; warning goes to stderr which we can't easily capture here.
+        check_and_update(dir.path(), &mut config, &cfg_path, &out).await;
+    }
+
+    #[tokio::test]
+    async fn test_check_and_update_no_action_when_up_to_date() {
+        let dir = TempDir::new().unwrap();
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let cache = VersionCache {
+            checked_at: now,
+            latest_version: "0.0.1".to_string(), // older than current
+        };
+        save_cache(&dir.path().join(CACHE_FILE), &cache);
+
+        let cfg_path = dir.path().join("config.json");
+        let mut config = Config::default();
+
+        let out = Output { json: false };
+        check_and_update(dir.path(), &mut config, &cfg_path, &out).await;
+        // auto_update should remain None — no prompt was triggered.
+        assert!(config.auto_update.is_none());
     }
 }

@@ -58,11 +58,11 @@ async fn run(cli: Cli, out: &Output) -> Result<()> {
     let mut config = load_config(&cfg_path)?;
     migration::run_migrations(&config_dir, &mut config)?;
 
-    let vc_dir = config_dir.clone();
-    let vc_json = out.json;
-    let vc_task = tokio::spawn(async move {
-        version_check::check_and_warn(&vc_dir, &Output { json: vc_json }).await;
-    });
+    // Run version check and auto-update before the command, except when the
+    // user is explicitly running `rw update` (to avoid a redundant double-check).
+    if !matches!(cli.command, Commands::Update) {
+        version_check::check_and_update(&config_dir, &mut config, &cfg_path, out).await;
+    }
 
     match cli.command {
         Commands::Auth(auth_args) => {
@@ -141,8 +141,10 @@ async fn run(cli: Cli, out: &Output) -> Result<()> {
             )
             .await?;
         }
+        Commands::Update => {
+            commands::update::run(out).await?;
+        }
     }
 
-    let _ = vc_task.await;
     Ok(())
 }

@@ -24,6 +24,7 @@ jaq-std = "3.0.0"
 jaq-json = "2.0.0"
 uuid = { version = "1", features = ["v4"] }
 rpassword = "7"
+self_update = { version = "0.43", default-features = false, features = ["reqwest", "rustls", "archive-tar", "compression-flate2"] }
 
 [dev-dependencies]
 mockito = "1"
