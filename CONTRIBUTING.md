@@ -39,54 +39,6 @@ Verify the installation:
 rw --version
 ```
 
-## Storage
-
-`rw` stores files under `~/.config/rw/`:
-
-| Path                                            | Contents                                            |
-|-------------------------------------------------|-----------------------------------------------------|
-| `~/.config/rw/config.json`                      | Tool configuration                                  |
-| `~/.config/rw/auth/{organization}-{stage}.json` | Auth credentials per organization+stage (mode 0600) |
-
-### config.json
-
-```json
-{
-  "default": "demo",
-  "profiles": {
-    "demo": {
-      "organization": "demonstration",
-      "stage": "prod"
-    },
-    "mercy": {
-      "organization": "mercy",
-      "stage": "dev"
-    }
-  }
-}
-```
-
-### auth/{organization}-{stage}.json
-
-Bearer token (written after `rw auth login`):
-
-```json
-{
-  "access_token": "<jwt>",
-  "refresh_token": "<token>",
-  "expires_at": 1234567890
-}
-```
-
-Basic credentials (written manually):
-
-```json
-{
-  "username": "jane.doe@roundingwell.com",
-  "password": "<plaintext-password>"
-}
-```
-
 ## Development
 
 Format code:

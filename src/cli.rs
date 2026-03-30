@@ -88,6 +88,8 @@ pub enum Commands {
     Auth(AuthArgs),
     /// Make an API request.
     Api(ApiArgs),
+    /// Manage basic auth credentials.
+    Basic(BasicArgs),
     /// Manage clinicians.
     Clinicians(CliniciansArgs),
     /// Set the default profile.
@@ -176,6 +178,32 @@ pub struct CliniciansAssignArgs {
 pub struct CliniciansTargetArgs {
     /// Clinician UUID or email address.
     pub target: String,
+}
+
+/// Arguments for the `basic` subcommand.
+#[derive(Args, Debug)]
+pub struct BasicArgs {
+    #[command(subcommand)]
+    pub command: BasicCommands,
+}
+
+/// Subcommands for `basic`.
+#[derive(Subcommand, Debug)]
+pub enum BasicCommands {
+    /// Store basic auth credentials for an organization and stage.
+    Set(BasicSetArgs),
+}
+
+/// Arguments for `basic set`.
+#[derive(Args, Debug)]
+pub struct BasicSetArgs {
+    /// Username.
+    #[arg(short = 'u', long)]
+    pub username: Option<String>,
+
+    /// Password (prompted securely if not provided).
+    #[arg(short = 'P', long)]
+    pub password: Option<String>,
 }
 
 /// Arguments for the `auth` subcommand.

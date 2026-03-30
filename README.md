@@ -88,6 +88,21 @@ rw auth logout      # Remove stored credentials for current profile
 rw auth login --profile mercy
 ```
 
+### Basic Auth
+
+```sh
+rw basic set                        # Store basic auth credentials (prompted interactively)
+rw basic set --username alice       # Password prompted securely
+rw basic set --username alice \
+  --password secret                 # Fully non-interactive
+rw basic set --profile mercy        # Use a named profile
+```
+
+| Flag         | Short | Description             |
+|--------------|-------|-------------------------|
+| `--username` | `-u`  | Username for basic auth |
+| `--password` | `-P`  | Password for basic auth |
+
 ### Clinicians
 
 ```sh

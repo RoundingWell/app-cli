@@ -19,12 +19,18 @@ cargo fmt               # Format
 - Run `cargo clippy` and `cargo fmt` after changes
 - Run `cargo test` before `cargo build`
 - Prefer unit tests to integration tests, mock network boundaries
-- Update docs when adding or modifying commands
+- Update docs (README.md, CONTRIBUTING.md, any relevant files in `docs/`) when adding or modifying commands
 - Prefer `rg` to `grep` and `find` when searching files
 
 ## Important Notes 
 
 - The API always sends and receives data in [JSON:API format](https://jsonapi.org/) (e.g. `{"data": {"type": "clinicians", "id": "<uuid>", "attributes": { ... }}}`)
+
+## Changelog
+
+- Only update CHANGELOG.md when drafting a release
+- Call out `BREAKING` changes with a warning ⚠️ symbol
+- Skip `ci` and `build` commits
 
 ## Git Tags
 
