@@ -79,10 +79,10 @@ If either flag is omitted, the CLI prompts for the missing value interactively. 
 ### Authentication
 
 ```sh
-rw auth login              # Open browser and authenticate via WorkOS
-rw auth status             # Show authentication status for current profile
-rw auth status --show      # Also print the stored token or credentials
-rw auth logout             # Remove stored credentials for current profile
+rw auth login       # Open browser and authenticate via WorkOS
+rw auth status      # Show authentication status for current profile
+rw auth header      # Show the authentication header for current profile
+rw auth logout      # Remove stored credentials for current profile
 
 # Use a named profile
 rw auth login --profile mercy
