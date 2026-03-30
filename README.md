@@ -105,6 +105,10 @@ rw clinicians disable 60fda0c4-eca0-434a-80d8-fd4e490aa051
 rw clinicians assign joe@example.com admin
 rw clinicians assign joe@example.com 60c0e3b8-64b6-491f-a502-7346d14b3192
 
+# Prepare a clinician: assigns the correct role, team, visibility, and default workspaces
+rw clinicians prepare joe@example.com
+rw clinicians prepare 60fda0c4-eca0-434a-80d8-fd4e490aa051
+
 # Use a named profile
 rw clinicians enable joe@example.com --profile mercy
 ```
