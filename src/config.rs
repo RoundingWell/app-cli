@@ -30,12 +30,11 @@ pub fn config_path() -> Result<PathBuf> {
 /// Loads the configuration from disk, returning a default empty config if the
 /// file does not exist yet. Automatically migrates the legacy `default_profile`
 /// key to `default` and rewrites the file if migration was needed.
-pub fn load_config() -> Result<Config> {
-    let path = config_path()?;
+pub fn load_config(path: &std::path::Path) -> Result<Config> {
     if !path.exists() {
         return Ok(Config::default());
     }
-    let contents = std::fs::read_to_string(&path)
+    let contents = std::fs::read_to_string(path)
         .with_context(|| format!("could not read config file: {}", path.display()))?;
     let mut value: serde_json::Value = serde_json::from_str(&contents)
         .with_context(|| format!("could not parse config file: {}", path.display()))?;
@@ -58,22 +57,20 @@ pub fn load_config() -> Result<Config> {
         .with_context(|| format!("could not parse config file: {}", path.display()))?;
 
     if migrated {
-        save_config(&config)?;
+        save_config_to(&config, path)?;
     }
 
     Ok(config)
 }
 
-/// Persists the configuration to `~/.config/rw/config.json`, creating
-/// parent directories as needed.
-pub fn save_config(config: &Config) -> Result<()> {
-    let path = config_path()?;
+/// Persists the configuration to the given path, creating parent directories as needed.
+pub fn save_config_to(config: &Config, path: &std::path::Path) -> Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
             .with_context(|| format!("could not create config directory: {}", parent.display()))?;
     }
     let contents = serde_json::to_string_pretty(config).context("could not serialize config")?;
-    write_atomic::write_file(&path, contents.as_bytes())
+    write_atomic::write_file(path, contents.as_bytes())
         .with_context(|| format!("could not write config file: {}", path.display()))?;
     Ok(())
 }

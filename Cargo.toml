@@ -21,3 +21,6 @@ webbrowser = "1"
 jaq-core = "3.0.0"
 jaq-std = "3.0.0"
 jaq-json = "2.0.0"
+
+[dev-dependencies]
+tempfile = "3"

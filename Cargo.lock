@@ -1332,6 +1332,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "tempfile",
  "tokio",
  "webbrowser",
  "write_atomic",
