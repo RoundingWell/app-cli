@@ -1,10 +1,9 @@
 use anyhow::{bail, Context, Result};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use std::path::Path;
 use uuid::Uuid;
 
-use crate::cli::Stage;
+use crate::config::AppContext;
 use crate::output::{CommandOutput, Output};
 
 // --- JSON:API deserialization types ---
@@ -84,25 +83,24 @@ impl CommandOutput for ClinicianOutput {
 
 // --- Public command functions ---
 
-pub async fn assign(
-    config_dir: &Path,
-    base_url: &str,
-    organization: &str,
-    stage: &Stage,
-    target: &str,
-    role_target: &str,
-    out: &Output,
-) -> Result<()> {
-    let auth_header = require_auth(config_dir, organization, stage).await?;
+pub async fn assign(ctx: &AppContext, target: &str, role_target: &str, out: &Output) -> Result<()> {
+    let auth_header = require_auth(ctx).await?;
     let client = Client::new();
     let clinician_uuid = if Uuid::parse_str(target).is_ok() {
         target.to_string()
     } else {
-        resolve_uuid_by_email(&client, base_url, &auth_header, target).await?
+        resolve_uuid_by_email(&client, &ctx.base_url, &auth_header, target).await?
     };
-    let (role_id, role_name) = resolve_role(&client, base_url, &auth_header, role_target).await?;
-    let (clinician_id, clinician_name) =
-        patch_clinician_role(&client, base_url, &auth_header, &clinician_uuid, &role_id).await?;
+    let (role_id, role_name) =
+        resolve_role(&client, &ctx.base_url, &auth_header, role_target).await?;
+    let (clinician_id, clinician_name) = patch_clinician_role(
+        &client,
+        &ctx.base_url,
+        &auth_header,
+        &clinician_uuid,
+        &role_id,
+    )
+    .await?;
     out.print(&AssignOutput {
         clinician_id,
         clinician_name,
@@ -112,64 +110,33 @@ pub async fn assign(
     Ok(())
 }
 
-pub async fn enable(
-    config_dir: &Path,
-    base_url: &str,
-    organization: &str,
-    stage: &Stage,
-    target: &str,
-    out: &Output,
-) -> Result<()> {
-    set_enabled(config_dir, base_url, organization, stage, target, true, out).await
+pub async fn enable(ctx: &AppContext, target: &str, out: &Output) -> Result<()> {
+    set_enabled(ctx, target, true, out).await
 }
 
-pub async fn disable(
-    config_dir: &Path,
-    base_url: &str,
-    organization: &str,
-    stage: &Stage,
-    target: &str,
-    out: &Output,
-) -> Result<()> {
-    set_enabled(
-        config_dir,
-        base_url,
-        organization,
-        stage,
-        target,
-        false,
-        out,
-    )
-    .await
+pub async fn disable(ctx: &AppContext, target: &str, out: &Output) -> Result<()> {
+    set_enabled(ctx, target, false, out).await
 }
 
 // --- Private helpers ---
 
-async fn set_enabled(
-    config_dir: &Path,
-    base_url: &str,
-    organization: &str,
-    stage: &Stage,
-    target: &str,
-    enabled: bool,
-    out: &Output,
-) -> Result<()> {
-    let auth_header = require_auth(config_dir, organization, stage).await?;
+async fn set_enabled(ctx: &AppContext, target: &str, enabled: bool, out: &Output) -> Result<()> {
+    let auth_header = require_auth(ctx).await?;
     let client = Client::new();
     let uuid = if Uuid::parse_str(target).is_ok() {
         target.to_string()
     } else {
-        resolve_uuid_by_email(&client, base_url, &auth_header, target).await?
+        resolve_uuid_by_email(&client, &ctx.base_url, &auth_header, target).await?
     };
-    let result = patch_clinician(&client, base_url, &auth_header, &uuid, enabled).await?;
+    let result = patch_clinician(&client, &ctx.base_url, &auth_header, &uuid, enabled).await?;
     out.print(&result);
     Ok(())
 }
 
 /// Resolves auth credentials, returning the `Authorization` header value.
 /// Fails with a friendly message if no credentials are stored.
-async fn require_auth(config_dir: &Path, organization: &str, stage: &Stage) -> Result<String> {
-    super::auth::resolve_auth(config_dir, organization, stage)
+async fn require_auth(ctx: &AppContext) -> Result<String> {
+    super::auth::resolve_auth(ctx)
         .await?
         .map(|a| super::auth::auth_header_value(&a))
         .ok_or_else(|| anyhow::anyhow!("not authenticated – run `rw auth login` first"))
@@ -343,6 +310,7 @@ mod tests {
     impl TestAuthGuard {
         fn new() -> Self {
             use crate::auth_cache::{save_auth_cache, AuthCache};
+            use crate::cli::Stage;
             let dir = tempfile::TempDir::new().unwrap();
             let cache = AuthCache::Bearer {
                 access_token: "test-token".to_string(),
@@ -353,8 +321,15 @@ mod tests {
             TestAuthGuard { dir }
         }
 
-        fn config_dir(&self) -> &std::path::Path {
-            self.dir.path()
+        fn app_context(&self, base_url: &str) -> AppContext {
+            use crate::cli::Stage;
+            AppContext {
+                config_dir: self.dir.path().to_path_buf(),
+                profile: "test".to_string(),
+                organization: "testorg".to_string(),
+                stage: Stage::Dev,
+                base_url: base_url.to_string(),
+            }
         }
     }
 
@@ -397,16 +372,9 @@ mod tests {
             .await;
 
         let out = Output { json: false };
-        enable(
-            _auth.config_dir(),
-            &server.url(),
-            "testorg",
-            &Stage::Dev,
-            uuid,
-            &out,
-        )
-        .await
-        .unwrap();
+        enable(&_auth.app_context(&server.url()), uuid, &out)
+            .await
+            .unwrap();
 
         mock.assert_async().await;
     }
@@ -425,16 +393,9 @@ mod tests {
             .await;
 
         let out = Output { json: false };
-        disable(
-            _auth.config_dir(),
-            &server.url(),
-            "testorg",
-            &Stage::Dev,
-            uuid,
-            &out,
-        )
-        .await
-        .unwrap();
+        disable(&_auth.app_context(&server.url()), uuid, &out)
+            .await
+            .unwrap();
 
         mock.assert_async().await;
     }
@@ -463,16 +424,9 @@ mod tests {
             .await;
 
         let out = Output { json: false };
-        enable(
-            _auth.config_dir(),
-            &server.url(),
-            "testorg",
-            &Stage::Dev,
-            email,
-            &out,
-        )
-        .await
-        .unwrap();
+        enable(&_auth.app_context(&server.url()), email, &out)
+            .await
+            .unwrap();
 
         get_mock.assert_async().await;
         patch_mock.assert_async().await;
@@ -492,10 +446,7 @@ mod tests {
 
         let out = Output { json: false };
         let result = enable(
-            _auth.config_dir(),
-            &server.url(),
-            "testorg",
-            &Stage::Dev,
+            &_auth.app_context(&server.url()),
             "missing@example.com",
             &out,
         )
@@ -535,16 +486,9 @@ mod tests {
             .await;
 
         let out = Output { json: false };
-        enable(
-            _auth.config_dir(),
-            &server.url(),
-            "testorg",
-            &Stage::Dev,
-            "DAVE@EXAMPLE.COM",
-            &out,
-        )
-        .await
-        .unwrap();
+        enable(&_auth.app_context(&server.url()), "DAVE@EXAMPLE.COM", &out)
+            .await
+            .unwrap();
     }
 
     #[test]
@@ -642,10 +586,7 @@ mod tests {
 
         let out = Output { json: false };
         assign(
-            _auth.config_dir(),
-            &server.url(),
-            "testorg",
-            &Stage::Dev,
+            &_auth.app_context(&server.url()),
             clinician_uuid,
             "admin",
             &out,
@@ -695,17 +636,9 @@ mod tests {
             .await;
 
         let out = Output { json: false };
-        assign(
-            _auth.config_dir(),
-            &server.url(),
-            "testorg",
-            &Stage::Dev,
-            email,
-            role_uuid,
-            &out,
-        )
-        .await
-        .unwrap();
+        assign(&_auth.app_context(&server.url()), email, role_uuid, &out)
+            .await
+            .unwrap();
 
         clinicians_mock.assert_async().await;
         roles_mock.assert_async().await;
@@ -728,10 +661,7 @@ mod tests {
 
         let out = Output { json: false };
         let result = assign(
-            _auth.config_dir(),
-            &server.url(),
-            "testorg",
-            &Stage::Dev,
+            &_auth.app_context(&server.url()),
             clinician_uuid,
             "nonexistent",
             &out,
@@ -775,10 +705,7 @@ mod tests {
 
         let out = Output { json: false };
         assign(
-            _auth.config_dir(),
-            &server.url(),
-            "testorg",
-            &Stage::Dev,
+            &_auth.app_context(&server.url()),
             clinician_uuid,
             role_uuid_upper,
             &out,

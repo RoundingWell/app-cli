@@ -11,7 +11,7 @@ use std::path::PathBuf;
 
 use api::resolve_api;
 use cli::{AuthCommands, BasicCommands, Cli, CliniciansCommands, Commands, ProfilesCommands};
-use config::{config_path, default_config_dir, load_config, resolve_profile};
+use config::{config_path, default_config_dir, load_config, resolve_profile, AppContext};
 use output::Output;
 
 #[tokio::main]
@@ -23,6 +23,22 @@ async fn main() {
         out.error(&e);
         std::process::exit(1);
     }
+}
+
+fn build_ctx(
+    config: &config::Config,
+    profile: Option<&str>,
+    config_dir: PathBuf,
+) -> Result<AppContext> {
+    let (profile, organization, stage) = resolve_profile(config, profile)?;
+    let base_url = resolve_api(&organization, &stage);
+    Ok(AppContext {
+        config_dir,
+        profile,
+        organization,
+        stage,
+        base_url,
+    })
 }
 
 async fn run(cli: Cli, out: &Output) -> Result<()> {
@@ -41,35 +57,27 @@ async fn run(cli: Cli, out: &Output) -> Result<()> {
 
     match cli.command {
         Commands::Auth(auth_args) => {
-            let (profile, organization, stage) = resolve_profile(&config, cli.profile.as_deref())?;
+            let ctx = build_ctx(&config, cli.profile.as_deref(), config_dir)?;
             match auth_args.command {
                 AuthCommands::Login => {
-                    commands::auth::login(&config_dir, &profile, &organization, &stage, out)
-                        .await?;
+                    commands::auth::login(&ctx, out).await?;
                 }
                 AuthCommands::Status => {
-                    commands::auth::status(&config_dir, &profile, &organization, &stage, out)?;
+                    commands::auth::status(&ctx, out)?;
                 }
                 AuthCommands::Header => {
-                    commands::auth::header(&config_dir, &organization, &stage, out).await?;
+                    commands::auth::header(&ctx, out).await?;
                 }
                 AuthCommands::Logout => {
-                    commands::auth::logout(&config_dir, &profile, &organization, &stage, out)?;
+                    commands::auth::logout(&ctx, out)?;
                 }
             }
         }
         Commands::Basic(basic_args) => {
-            let (_profile, organization, stage) = resolve_profile(&config, cli.profile.as_deref())?;
+            let ctx = build_ctx(&config, cli.profile.as_deref(), config_dir)?;
             match basic_args.command {
                 BasicCommands::Set(args) => {
-                    commands::basic::set(
-                        &config_dir,
-                        args.username,
-                        args.password,
-                        &organization,
-                        &stage,
-                        out,
-                    )?;
+                    commands::basic::set(&ctx, args.username, args.password, out)?;
                 }
             }
         }
@@ -95,53 +103,23 @@ async fn run(cli: Cli, out: &Output) -> Result<()> {
             }
         },
         Commands::Clinicians(clinician_args) => {
-            let (_profile, organization, stage) = resolve_profile(&config, cli.profile.as_deref())?;
-            let base_url = resolve_api(&organization, &stage);
+            let ctx = build_ctx(&config, cli.profile.as_deref(), config_dir)?;
             match clinician_args.command {
                 CliniciansCommands::Assign(args) => {
-                    commands::clinicians::assign(
-                        &config_dir,
-                        &base_url,
-                        &organization,
-                        &stage,
-                        &args.target,
-                        &args.role,
-                        out,
-                    )
-                    .await?;
+                    commands::clinicians::assign(&ctx, &args.target, &args.role, out).await?;
                 }
                 CliniciansCommands::Enable(args) => {
-                    commands::clinicians::enable(
-                        &config_dir,
-                        &base_url,
-                        &organization,
-                        &stage,
-                        &args.target,
-                        out,
-                    )
-                    .await?;
+                    commands::clinicians::enable(&ctx, &args.target, out).await?;
                 }
                 CliniciansCommands::Disable(args) => {
-                    commands::clinicians::disable(
-                        &config_dir,
-                        &base_url,
-                        &organization,
-                        &stage,
-                        &args.target,
-                        out,
-                    )
-                    .await?;
+                    commands::clinicians::disable(&ctx, &args.target, out).await?;
                 }
             }
         }
         Commands::Api(api_args) => {
-            let (_profile, organization, stage) = resolve_profile(&config, cli.profile.as_deref())?;
-            let base_url = resolve_api(&organization, &stage);
+            let ctx = build_ctx(&config, cli.profile.as_deref(), config_dir)?;
             commands::api::run(
-                &config_dir,
-                &base_url,
-                &organization,
-                &stage,
+                &ctx,
                 &api_args.endpoint,
                 &api_args.method,
                 &api_args.headers,

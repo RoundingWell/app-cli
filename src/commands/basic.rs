@@ -1,9 +1,8 @@
 use anyhow::Result;
 use serde::Serialize;
-use std::path::Path;
 
 use crate::auth_cache::{save_auth_cache, AuthCache};
-use crate::cli::Stage;
+use crate::config::AppContext;
 use crate::output::{CommandOutput, Output};
 
 #[derive(Serialize)]
@@ -56,11 +55,9 @@ fn prompt_password() -> Result<String> {
 /// is prompted with hidden input. When `--json` is active, both values must be supplied
 /// as flags because interactive prompting is not possible.
 pub fn set(
-    config_dir: &Path,
+    ctx: &AppContext,
     username: Option<String>,
     password: Option<String>,
-    organization: &str,
-    stage: &Stage,
     out: &Output,
 ) -> Result<()> {
     if out.json && (username.is_none() || password.is_none()) {
@@ -87,11 +84,11 @@ pub fn set(
         .unwrap_or_else(prompt_password)?;
 
     let cache = AuthCache::Basic { username, password };
-    save_auth_cache(config_dir, organization, stage, &cache)?;
+    save_auth_cache(&ctx.config_dir, &ctx.organization, &ctx.stage, &cache)?;
 
     out.print(&BasicSetOutput {
-        organization: organization.to_string(),
-        stage: stage.to_string(),
+        organization: ctx.organization.clone(),
+        stage: ctx.stage.to_string(),
     });
     Ok(())
 }
@@ -100,18 +97,28 @@ pub fn set(
 mod tests {
     use super::*;
     use crate::auth_cache::load_auth_cache;
+    use crate::cli::Stage;
     use crate::output::Output;
+
+    fn test_ctx(dir: &tempfile::TempDir) -> AppContext {
+        AppContext {
+            config_dir: dir.path().to_path_buf(),
+            profile: "test".to_string(),
+            organization: "my-org".to_string(),
+            stage: Stage::Dev,
+            base_url: String::new(),
+        }
+    }
 
     #[test]
     fn test_set_saves_basic_cache() {
         let dir = tempfile::TempDir::new().unwrap();
+        let ctx = test_ctx(&dir);
         let out = Output { json: false };
         set(
-            dir.path(),
+            &ctx,
             Some("alice".to_string()),
             Some("secret".to_string()),
-            "my-org",
-            &Stage::Dev,
             &out,
         )
         .unwrap();
@@ -131,57 +138,28 @@ mod tests {
     #[test]
     fn test_set_json_mode_requires_username_and_password() {
         let dir = tempfile::TempDir::new().unwrap();
+        let ctx = test_ctx(&dir);
         let out = Output { json: true };
 
-        assert!(set(
-            dir.path(),
-            None,
-            Some("pw".into()),
-            "my-org",
-            &Stage::Dev,
-            &out
-        )
-        .is_err());
-        assert!(set(
-            dir.path(),
-            Some("u".into()),
-            None,
-            "my-org",
-            &Stage::Dev,
-            &out
-        )
-        .is_err());
+        assert!(set(&ctx, None, Some("pw".into()), &out).is_err());
+        assert!(set(&ctx, Some("u".into()), None, &out).is_err());
     }
 
     #[test]
     fn test_set_rejects_empty_username_flag() {
         let dir = tempfile::TempDir::new().unwrap();
+        let ctx = test_ctx(&dir);
         let out = Output { json: false };
-        let err = set(
-            dir.path(),
-            Some("".into()),
-            Some("pw".into()),
-            "my-org",
-            &Stage::Dev,
-            &out,
-        )
-        .unwrap_err();
+        let err = set(&ctx, Some("".into()), Some("pw".into()), &out).unwrap_err();
         assert!(err.to_string().contains("username cannot be empty"));
     }
 
     #[test]
     fn test_set_rejects_empty_password_flag() {
         let dir = tempfile::TempDir::new().unwrap();
+        let ctx = test_ctx(&dir);
         let out = Output { json: false };
-        let err = set(
-            dir.path(),
-            Some("alice".into()),
-            Some("".into()),
-            "my-org",
-            &Stage::Dev,
-            &out,
-        )
-        .unwrap_err();
+        let err = set(&ctx, Some("alice".into()), Some("".into()), &out).unwrap_err();
         assert!(err.to_string().contains("password cannot be empty"));
     }
 }
