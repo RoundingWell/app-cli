@@ -20,6 +20,7 @@ cargo fmt               # Format
 - Run `cargo test` before `cargo build`
 - Use test driven development (TDD) principles; create tests that fail, then implement to satisfy test
 - Prefer unit tests to integration tests, mock network boundaries
+- The API always sends and receives data in [JSON:API format](https://jsonapi.org/) (e.g. `{ "data": { "type": "clinicians", "id": "<uuid>", "attributes": { ... } } }`)
 
 ## Git Tags
 

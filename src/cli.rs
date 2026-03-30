@@ -88,9 +88,11 @@ pub enum Commands {
     Auth(AuthArgs),
     /// Make an API request.
     Api(ApiArgs),
+    /// Manage clinicians.
+    Clinicians(CliniciansArgs),
     /// Set the default profile.
     Profile(ProfileArgs),
-    /// List available profiles or manage them.
+    /// List and manage profiles.
     Profiles(ProfilesArgs),
 }
 
@@ -140,6 +142,40 @@ pub struct ProfilesAddArgs {
     /// Stage.
     #[arg(short = 'g', long)]
     pub stage: Option<Stage>,
+}
+
+/// Arguments for the `clinician` subcommand.
+#[derive(Args, Debug)]
+pub struct CliniciansArgs {
+    #[command(subcommand)]
+    pub command: CliniciansCommands,
+}
+
+/// Subcommands for `clinician`.
+#[derive(Subcommand, Debug)]
+pub enum CliniciansCommands {
+    /// Assign a role to a clinician by UUID or email.
+    Assign(CliniciansAssignArgs),
+    /// Enable a clinician by UUID or email.
+    Enable(CliniciansTargetArgs),
+    /// Disable a clinician by UUID or email.
+    Disable(CliniciansTargetArgs),
+}
+
+/// Arguments for `clinicians assign`.
+#[derive(Args, Debug)]
+pub struct CliniciansAssignArgs {
+    /// Clinician UUID or email address.
+    pub target: String,
+    /// Role UUID or name.
+    pub role: String,
+}
+
+/// Arguments for `clinician enable` / `clinician disable`.
+#[derive(Args, Debug)]
+pub struct CliniciansTargetArgs {
+    /// Clinician UUID or email address.
+    pub target: String,
 }
 
 /// Arguments for the `auth` subcommand.

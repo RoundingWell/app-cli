@@ -410,6 +410,24 @@ async fn try_refresh(stage: &Stage, refresh_token: &str) -> Result<AuthCache> {
     })
 }
 
+/// Attaches stored credentials to `req`. Returns the request unmodified if no
+/// credentials are stored (the caller will receive a 401 from the API).
+pub async fn attach_auth(
+    req: reqwest::RequestBuilder,
+    organization: &str,
+    stage: &Stage,
+) -> Result<reqwest::RequestBuilder> {
+    Ok(match resolve_auth(organization, stage).await? {
+        Some(ResolvedAuth::Bearer(token)) => {
+            req.header(reqwest::header::AUTHORIZATION, format!("Bearer {}", token))
+        }
+        Some(ResolvedAuth::Basic { username, password }) => {
+            req.basic_auth(&username, Some(&password))
+        }
+        None => req,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

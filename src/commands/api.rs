@@ -51,15 +51,7 @@ pub async fn run(
     );
 
     // Attach authentication header if credentials are stored.
-    match super::auth::resolve_auth(organization, stage).await? {
-        Some(super::auth::ResolvedAuth::Bearer(token)) => {
-            req = req.header(reqwest::header::AUTHORIZATION, format!("Bearer {}", token));
-        }
-        Some(super::auth::ResolvedAuth::Basic { username, password }) => {
-            req = req.basic_auth(&username, Some(&password));
-        }
-        None => {}
-    }
+    req = super::auth::attach_auth(req, organization, stage).await?;
 
     // Parse and attach extra headers supplied via -H.
     let mut header_map = HeaderMap::new();
