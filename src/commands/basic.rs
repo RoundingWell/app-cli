@@ -1,5 +1,6 @@
 use anyhow::Result;
 use serde::Serialize;
+use std::path::Path;
 
 use crate::auth_cache::{save_auth_cache, AuthCache};
 use crate::cli::Stage;
@@ -55,6 +56,7 @@ fn prompt_password() -> Result<String> {
 /// is prompted with hidden input. When `--json` is active, both values must be supplied
 /// as flags because interactive prompting is not possible.
 pub fn set(
+    config_dir: &Path,
     username: Option<String>,
     password: Option<String>,
     organization: &str,
@@ -85,7 +87,7 @@ pub fn set(
         .unwrap_or_else(prompt_password)?;
 
     let cache = AuthCache::Basic { username, password };
-    save_auth_cache(organization, stage, &cache)?;
+    save_auth_cache(config_dir, organization, stage, &cache)?;
 
     out.print(&BasicSetOutput {
         organization: organization.to_string(),
@@ -97,33 +99,26 @@ pub fn set(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::auth_cache::{delete_auth_cache, load_auth_cache};
+    use crate::auth_cache::load_auth_cache;
     use crate::output::Output;
-
-    /// Removes the test auth cache on drop to keep the real home dir clean.
-    struct BasicCacheGuard(&'static str);
-    impl Drop for BasicCacheGuard {
-        fn drop(&mut self) {
-            let _ = delete_auth_cache(self.0, &Stage::Dev);
-        }
-    }
 
     #[test]
     fn test_set_saves_basic_cache() {
-        let org = "test-basic-set-saves";
-        let _guard = BasicCacheGuard(org);
-
+        let dir = tempfile::TempDir::new().unwrap();
         let out = Output { json: false };
         set(
+            dir.path(),
             Some("alice".to_string()),
             Some("secret".to_string()),
-            org,
+            "my-org",
             &Stage::Dev,
             &out,
         )
         .unwrap();
 
-        let cache = load_auth_cache(org, &Stage::Dev).unwrap().unwrap();
+        let cache = load_auth_cache(dir.path(), "my-org", &Stage::Dev)
+            .unwrap()
+            .unwrap();
         match cache {
             AuthCache::Basic { username, password } => {
                 assert_eq!(username, "alice");
@@ -135,16 +130,35 @@ mod tests {
 
     #[test]
     fn test_set_json_mode_requires_username_and_password() {
+        let dir = tempfile::TempDir::new().unwrap();
         let out = Output { json: true };
 
-        assert!(set(None, Some("pw".into()), "my-org", &Stage::Dev, &out).is_err());
-        assert!(set(Some("u".into()), None, "my-org", &Stage::Dev, &out).is_err());
+        assert!(set(
+            dir.path(),
+            None,
+            Some("pw".into()),
+            "my-org",
+            &Stage::Dev,
+            &out
+        )
+        .is_err());
+        assert!(set(
+            dir.path(),
+            Some("u".into()),
+            None,
+            "my-org",
+            &Stage::Dev,
+            &out
+        )
+        .is_err());
     }
 
     #[test]
     fn test_set_rejects_empty_username_flag() {
+        let dir = tempfile::TempDir::new().unwrap();
         let out = Output { json: false };
         let err = set(
+            dir.path(),
             Some("".into()),
             Some("pw".into()),
             "my-org",
@@ -157,8 +171,10 @@ mod tests {
 
     #[test]
     fn test_set_rejects_empty_password_flag() {
+        let dir = tempfile::TempDir::new().unwrap();
         let out = Output { json: false };
         let err = set(
+            dir.path(),
             Some("alice".into()),
             Some("".into()),
             "my-org",

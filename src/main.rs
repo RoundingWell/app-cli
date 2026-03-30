@@ -7,10 +7,11 @@ mod output;
 
 use anyhow::Result;
 use clap::Parser;
+use std::path::PathBuf;
 
 use api::resolve_api;
 use cli::{AuthCommands, BasicCommands, Cli, CliniciansCommands, Commands, ProfilesCommands};
-use config::{config_path, load_config, resolve_profile};
+use config::{config_path, default_config_dir, load_config, resolve_profile};
 use output::Output;
 
 #[tokio::main]
@@ -25,7 +26,17 @@ async fn main() {
 }
 
 async fn run(cli: Cli, out: &Output) -> Result<()> {
-    let cfg_path = config_path()?;
+    let config_dir: PathBuf = if let Some(ref dir) = cli.config_dir {
+        let path = PathBuf::from(dir);
+        if !path.is_dir() {
+            anyhow::bail!("config directory does not exist: {}", path.display());
+        }
+        path
+    } else {
+        default_config_dir()?
+    };
+
+    let cfg_path = config_path(&config_dir);
     let mut config = load_config(&cfg_path)?;
 
     match cli.command {
@@ -33,16 +44,17 @@ async fn run(cli: Cli, out: &Output) -> Result<()> {
             let (profile, organization, stage) = resolve_profile(&config, cli.profile.as_deref())?;
             match auth_args.command {
                 AuthCommands::Login => {
-                    commands::auth::login(&profile, &organization, &stage, out).await?;
+                    commands::auth::login(&config_dir, &profile, &organization, &stage, out)
+                        .await?;
                 }
                 AuthCommands::Status => {
-                    commands::auth::status(&profile, &organization, &stage, out)?;
+                    commands::auth::status(&config_dir, &profile, &organization, &stage, out)?;
                 }
                 AuthCommands::Header => {
-                    commands::auth::header(&organization, &stage, out).await?;
+                    commands::auth::header(&config_dir, &organization, &stage, out).await?;
                 }
                 AuthCommands::Logout => {
-                    commands::auth::logout(&profile, &organization, &stage, out)?;
+                    commands::auth::logout(&config_dir, &profile, &organization, &stage, out)?;
                 }
             }
         }
@@ -50,7 +62,14 @@ async fn run(cli: Cli, out: &Output) -> Result<()> {
             let (_profile, organization, stage) = resolve_profile(&config, cli.profile.as_deref())?;
             match basic_args.command {
                 BasicCommands::Set(args) => {
-                    commands::basic::set(args.username, args.password, &organization, &stage, out)?;
+                    commands::basic::set(
+                        &config_dir,
+                        args.username,
+                        args.password,
+                        &organization,
+                        &stage,
+                        out,
+                    )?;
                 }
             }
         }
@@ -81,6 +100,7 @@ async fn run(cli: Cli, out: &Output) -> Result<()> {
             match clinician_args.command {
                 CliniciansCommands::Assign(args) => {
                     commands::clinicians::assign(
+                        &config_dir,
                         &base_url,
                         &organization,
                         &stage,
@@ -92,6 +112,7 @@ async fn run(cli: Cli, out: &Output) -> Result<()> {
                 }
                 CliniciansCommands::Enable(args) => {
                     commands::clinicians::enable(
+                        &config_dir,
                         &base_url,
                         &organization,
                         &stage,
@@ -102,6 +123,7 @@ async fn run(cli: Cli, out: &Output) -> Result<()> {
                 }
                 CliniciansCommands::Disable(args) => {
                     commands::clinicians::disable(
+                        &config_dir,
                         &base_url,
                         &organization,
                         &stage,
@@ -116,6 +138,7 @@ async fn run(cli: Cli, out: &Output) -> Result<()> {
             let (_profile, organization, stage) = resolve_profile(&config, cli.profile.as_deref())?;
             let base_url = resolve_api(&organization, &stage);
             commands::api::run(
+                &config_dir,
                 &base_url,
                 &organization,
                 &stage,

@@ -26,23 +26,14 @@ RW_VERSION=1.2.3 bash -c "$(curl -fsSL https://raw.githubusercontent.com/Roundin
 
 ### Global options
 
-| Flag        | Short | Description               |
-|-------------|-------|---------------------------|
-| `--profile` | `-p`  | Named profile to use      |
-| `--json`    |       | Change all output to JSON |
+| Flag           | Short | Description               |
+|----------------|-------|---------------------------|
+| `--profile`    | `-p`  | Named profile to use      |
+| `--config-dir` | `-c`  | Configuration directory   |
+| `--json`       |       | Change all output to JSON |
 
 All commands require a profile. Set a default with `rw profile <name>`, or pass `--profile` on each invocation.
 See [Adding a profile](#adding-a-profile) to add a profile.
-
-Stage-to-domain mapping:
-
-| Stage     | Domain                                            |
-|-----------|---------------------------------------------------|
-| `prod`    | `https://{organization}.roundingwell.com`         |
-| `sandbox` | `https://{organization}-sandbox.roundingwell.com` |
-| `qa`      | `https://{organization}.roundingwell.com`         |
-| `dev`     | `https://{organization}.roundingwell.dev`         |
-| `local`   | `http://localhost:8080`                           |
 
 ### Profiles
 
@@ -142,5 +133,17 @@ rw api clinicians --profile demo
 
 _**Note**: jq expression filtering uses [jaq](https://github.com/01mf02/jaq), which may have slight differences
 in formatting and may not support all jq features._
+
+Stage-to-domain mapping:
+
+| Stage     | Domain                                            |
+|-----------|---------------------------------------------------|
+| `prod`    | `https://{organization}.roundingwell.com`         |
+| `sandbox` | `https://{organization}-sandbox.roundingwell.com` |
+| `qa`      | `https://{organization}.roundingwell.com`         |
+| `dev`     | `https://{organization}.roundingwell.dev`         |
+| `local`   | `http://localhost:8080`                           |
+
+## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development instructions.

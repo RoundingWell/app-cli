@@ -77,6 +77,10 @@ pub struct Cli {
     #[arg(long, global = true)]
     pub json: bool,
 
+    /// Config directory path (must already exist).
+    #[arg(short = 'c', long, global = true)]
+    pub config_dir: Option<String>,
+
     #[command(subcommand)]
     pub command: Commands,
 }
