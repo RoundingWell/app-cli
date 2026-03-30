@@ -9,7 +9,7 @@ use anyhow::Result;
 use clap::Parser;
 
 use api::resolve_api;
-use cli::{AuthCommands, Cli, CliniciansCommands, Commands, ProfilesCommands};
+use cli::{AuthCommands, BasicCommands, Cli, CliniciansCommands, Commands, ProfilesCommands};
 use config::{config_path, load_config, resolve_profile};
 use output::Output;
 
@@ -43,6 +43,14 @@ async fn run(cli: Cli, out: &Output) -> Result<()> {
                 }
                 AuthCommands::Logout => {
                     commands::auth::logout(&profile, &organization, &stage, out)?;
+                }
+            }
+        }
+        Commands::Basic(basic_args) => {
+            let (_profile, organization, stage) = resolve_profile(&config, cli.profile.as_deref())?;
+            match basic_args.command {
+                BasicCommands::Set(args) => {
+                    commands::basic::set(args.username, args.password, &organization, &stage, out)?;
                 }
             }
         }
