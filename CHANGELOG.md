@@ -7,11 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-03-30
+
+### Added
+
+- Config directory can now be set at runtime
+- Clinician commands: `enable`, `disable`, `assign`, and `prepare`
+- Basic auth commands: `set`
+
 ## [0.1.0] - 2026-03-29
 
 ### Added
 
 - Initial release of the `rw` CLI tool
 
-[Unreleased]: https://github.com/RoundingWell/app-cli/compare/0.1.0...HEAD
+[Unreleased]: https://github.com/RoundingWell/app-cli/compare/0.2.0...HEAD
+[0.2.0]: https://github.com/RoundingWell/app-cli/compare/0.1.0...0.2.0
 [0.1.0]: https://github.com/RoundingWell/app-cli/releases/tag/0.1.0
