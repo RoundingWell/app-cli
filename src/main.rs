@@ -58,6 +58,16 @@ async fn run(cli: Cli, out: &Output) -> Result<()> {
     let mut config = load_config(&cfg_path)?;
     migration::run_migrations(&config_dir, &mut config)?;
 
+    // Record the current binary version so the next run can detect upgrades and
+    // apply any new migrations.  This must happen *after* run_migrations so that
+    // migration checks compare against the previously-installed version, not the
+    // one that is about to start running.
+    let current_version = env!("CARGO_PKG_VERSION");
+    if config.version.as_deref() != Some(current_version) {
+        config.version = Some(current_version.to_string());
+        config::save_config_to(&config, &cfg_path)?;
+    }
+
     // Run version check and auto-update before the command, except when the
     // user is explicitly running `rw update` (to avoid a redundant double-check).
     if !matches!(cli.command, Commands::Update) {

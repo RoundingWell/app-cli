@@ -63,7 +63,7 @@ pub async fn check_and_update(
     match config.auto_update {
         Some(true) => {
             out.warn(&format!("Updating rw to {}...", latest));
-            apply_update(out).await;
+            apply_update(out, do_update).await;
         }
         Some(false) => {
             out.warn(&notice);
@@ -79,18 +79,27 @@ pub async fn check_and_update(
                 let _ = save_config_to(config, cfg_path);
                 if enable {
                     out.warn(&format!("Updating rw to {}...", latest));
-                    apply_update(out).await;
+                    apply_update(out, do_update).await;
                 }
             }
         }
     }
 }
 
-async fn apply_update(out: &Output) {
-    match tokio::task::spawn_blocking(do_update).await {
-        Ok(Ok(_)) => {}
-        Ok(Err(e)) => out.warn(&format!("Auto-update failed: {:#}", e)),
-        Err(_) => out.warn("Auto-update task panicked"),
+async fn apply_update<F>(out: &Output, update_fn: F) -> Option<String>
+where
+    F: FnOnce() -> anyhow::Result<(String, bool)> + Send + 'static,
+{
+    match tokio::task::spawn_blocking(update_fn).await {
+        Ok(Ok((version, _))) => Some(version),
+        Ok(Err(e)) => {
+            out.warn(&format!("Auto-update failed: {:#}", e));
+            None
+        }
+        Err(_) => {
+            out.warn("Auto-update task panicked");
+            None
+        }
     }
 }
 
@@ -372,6 +381,50 @@ mod tests {
         let out = Output { json: false };
         // Must not panic; warning goes to stderr which we can't easily capture here.
         check_and_update(dir.path(), &mut config, &cfg_path, &out).await;
+    }
+
+    #[tokio::test]
+    async fn test_apply_update_returns_version_on_success() {
+        let out = Output { json: false };
+        let result = apply_update(&out, || Ok(("1.5.0".to_string(), true))).await;
+        assert_eq!(result, Some("1.5.0".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_apply_update_returns_none_on_failure() {
+        let out = Output { json: false };
+        let result = apply_update(&out, || anyhow::bail!("simulated failure")).await;
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_check_and_update_does_not_set_config_version() {
+        // check_and_update must NOT write config.version; main.rs does that at
+        // startup after migrations so that future migration checks are not skipped.
+        // Use auto_update = Some(false) to exercise the version-check code path
+        // without invoking do_update (which makes live network requests).
+        let dir = TempDir::new().unwrap();
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let cache = VersionCache {
+            checked_at: now,
+            latest_version: "99.0.0".to_string(),
+        };
+        save_cache(&dir.path().join(CACHE_FILE), &cache);
+
+        let cfg_path = dir.path().join("config.json");
+        let mut config = Config::default();
+        config.auto_update = Some(false);
+
+        let out = Output { json: false };
+        check_and_update(dir.path(), &mut config, &cfg_path, &out).await;
+
+        assert!(
+            config.version.is_none(),
+            "check_and_update should not mutate config.version"
+        );
     }
 
     #[tokio::test]
