@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-03-31
+
+### Changed
+
+- ⚠️ `rw profiles`, `rw profile`, and `rw basic set` commands are replaced by `rw config profile *`
+  - `rw config profile list` — list all configured profiles
+  - `rw config profile show` — show the active profile
+  - `rw config profile use <name>` — set default profile
+  - `rw config profile add <name>` — add a profile (new `--use` flag sets it as default)
+  - `rw config profile rm <name>` — remove a profile
+  - `rw config profile set <name>` — update organization or stage for a profile
+  - `rw config profile auth <name>` — store basic auth credentials for a profile
+- ⚠️ `rw basic set` is replaced by `rw config profile auth <name>`
+
+### Added
+
+- `rw config updates show` — show current auto-update setting
+- `rw config updates enable` — enable automatic updates
+- `rw config updates disable` — disable automatic updates
+
 ## [0.4.1] - 2026-03-31
 
 ### Fixed
@@ -50,7 +70,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Initial release of the `rw` CLI tool
 
-[Unreleased]: https://github.com/RoundingWell/app-cli/compare/0.4.1...HEAD
+[Unreleased]: https://github.com/RoundingWell/app-cli/compare/0.5.0...HEAD
+[0.5.0]: https://github.com/RoundingWell/app-cli/compare/0.4.1...0.5.0
 [0.4.1]: https://github.com/RoundingWell/app-cli/compare/0.4.0...0.4.1
 [0.4.0]: https://github.com/RoundingWell/app-cli/compare/0.3.1...0.4.0
 [0.3.1]: https://github.com/RoundingWell/app-cli/compare/0.3.0...0.3.1
