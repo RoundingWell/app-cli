@@ -32,40 +32,49 @@ RW_VERSION=1.2.3 bash -c "$(curl -fsSL https://raw.githubusercontent.com/Roundin
 | `--config-dir` | `-c`  | Configuration directory   |
 | `--json`       |       | Change all output to JSON |
 
-All commands require a profile. Set a default with `rw profile <name>`, or pass `--profile` on each invocation.
+All commands require a profile. Set a default with `rw config profile use <name>`, or pass `--profile` on each invocation.
 See [Adding a profile](#adding-a-profile) to add a profile.
 
 ### Profiles
 
 ```sh
-rw profiles                 # List all configured profiles
-rw profiles add mercy       # Add the "mercy" profile (see below)
-rw profiles rm mercy        # Remove the "mercy" profile
-rw profile mercy            # Set "mercy" as the default profile (profile must already exist)
+rw config profile list                  # List all configured profiles
+rw config profile show                  # Show the active profile
+rw config profile use mercy             # Set "mercy" as the default profile
+rw config profile add mercy             # Add the "mercy" profile (see below)
+rw config profile rm mercy              # Remove the "mercy" profile (prompts for confirmation)
+rw config profile rm mercy --yes        # Remove without prompting
+rw config profile set mercy -o new-org  # Update organization for a profile
+rw config profile set mercy -g sandbox  # Update stage for a profile
+rw config profile auth mercy            # Save basic auth credentials for a profile (see below)
 ```
 
 #### Adding a profile
 
 ```sh
 # Interactive – prompts for organization and stage
-rw profiles add mercy
+rw config profile add mercy
 
 # Non-interactive – provide all values as flags
-rw profiles add mercy --organization mercy-clinic --stage prod
+rw config profile add mercy --organization mercy-clinic --stage prod
 
 # Short flags
-rw profiles add mercy -o mercy-clinic -g prod
+rw config profile add mercy -o mercy-clinic -g prod
+
+# Set as default after creation
+rw config profile add mercy -o mercy-clinic -g prod --use
 
 # JSON output (requires --organization and --stage; errors if either is missing)
-rw profiles add mercy -o mercy-clinic -g prod --json
+rw config profile add mercy -o mercy-clinic -g prod --json
 ```
 
 | Flag             | Short | Description                                             |
 |------------------|-------|---------------------------------------------------------|
 | `--organization` | `-o`  | Organization slug (e.g. `mercy-clinic`)                 |
 | `--stage`        | `-g`  | Stage: `prod`, `sandbox`, `qa`, `dev`, or `local`       |
+| `--use`          |       | Set new profile as default after creation               |
 
-If either flag is omitted, the CLI prompts for the missing value interactively. Passing `--json` without both flags is an error.
+If either `--organization` or `--stage` is omitted, the CLI prompts for the missing value interactively. Passing `--json` without both flags is an error.
 
 ### Authentication
 
@@ -82,11 +91,10 @@ rw auth login --profile mercy
 ### Basic Auth
 
 ```sh
-rw basic set                        # Store basic auth credentials (prompted interactively)
-rw basic set --username alice       # Password prompted securely
-rw basic set --username alice \
-  --password secret                 # Fully non-interactive
-rw basic set --profile mercy        # Use a named profile
+rw config profile auth mercy                        # Store basic auth credentials (prompted interactively)
+rw config profile auth mercy --username alice       # Password prompted securely
+rw config profile auth mercy --username alice \
+  --password secret                                 # Fully non-interactive
 ```
 
 | Flag         | Short | Description             |
@@ -161,7 +169,13 @@ A new version of rw is available: 0.4.0 (you have 0.3.1)
 Enable automatic updates? [y/N]
 ```
 
-The preference is stored as `auto_update` in `~/.config/rw/config.json`. Once set, no further prompting occurs — the CLI either updates silently before each command (if enabled) or shows a warning (if disabled). Automatic updates can be re-enabled or disabled at any time by editing `auto_update` in the config file directly.
+The preference is stored as `auto_update` in `~/.config/rw/config.json`. Once set, no further prompting occurs — the CLI either updates silently before each command (if enabled) or shows a warning (if disabled). Automatic updates can also be managed with:
+
+```sh
+rw config updates show     # Show current update setting
+rw config updates enable   # Enable automatic updates
+rw config updates disable  # Disable automatic updates
+```
 
 ## Contributing
 

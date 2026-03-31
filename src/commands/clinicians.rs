@@ -620,7 +620,6 @@ mod tests {
             AppContext {
                 config_dir: self.dir.path().to_path_buf(),
                 profile: "test".to_string(),
-                organization: "testorg".to_string(),
                 stage: Stage::Dev,
                 base_url: base_url.to_string(),
             }
