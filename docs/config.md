@@ -41,7 +41,7 @@ Bearer token (written after `rw auth login`):
 }
 ```
 
-Basic credentials (written using `rw basic set`):
+Basic credentials (written using `rw config profile auth <name>`):
 
 ```json
 {

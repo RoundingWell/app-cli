@@ -92,64 +92,136 @@ pub enum Commands {
     Auth(AuthArgs),
     /// Make an API request.
     Api(ApiArgs),
-    /// Manage basic auth credentials.
-    Basic(BasicArgs),
     /// Manage clinicians.
     Clinicians(CliniciansArgs),
-    /// Set the default profile.
-    Profile(ProfileArgs),
-    /// List and manage profiles.
-    Profiles(ProfilesArgs),
     /// Update rw to the latest version.
     Update,
+    /// Manage CLI configuration, profiles, and update settings.
+    Config(ConfigArgs),
 }
 
-/// Arguments for the `profile` subcommand.
+/// Arguments for the `config` subcommand.
 #[derive(Args, Debug)]
-pub struct ProfileArgs {
-    /// Profile name to set as default.
-    #[arg(value_parser = validate_slug)]
-    pub name: String,
-}
-
-/// Arguments for the `profiles` subcommand.
-#[derive(Args, Debug)]
-pub struct ProfilesArgs {
+pub struct ConfigArgs {
     #[command(subcommand)]
-    pub command: Option<ProfilesCommands>,
+    pub command: ConfigCommands,
 }
 
-/// Subcommands for `profiles`.
+/// Subcommands for `config`.
 #[derive(Subcommand, Debug)]
-pub enum ProfilesCommands {
-    /// Add a new profile.
-    Add(ProfilesAddArgs),
+pub enum ConfigCommands {
+    /// Manage profiles.
+    Profile(ConfigProfileArgs),
+    /// Manage automatic update settings.
+    Updates(ConfigUpdatesArgs),
+}
+
+/// Arguments for `config profile`.
+#[derive(Args, Debug)]
+pub struct ConfigProfileArgs {
+    #[command(subcommand)]
+    pub command: ConfigProfileCommands,
+}
+
+/// Subcommands for `config profile`.
+#[derive(Subcommand, Debug)]
+pub enum ConfigProfileCommands {
+    /// List all profiles.
+    List,
+    /// Show the active profile.
+    Show,
+    /// Set a profile as the default.
+    Use(ConfigProfileUseArgs),
+    /// Update fields on an existing profile.
+    Set(ConfigProfileSetArgs),
     /// Remove a profile.
-    Rm(ProfilesRmArgs),
+    Rm(ConfigProfileRmArgs),
+    /// Add a new profile.
+    Add(ConfigProfileAddArgs),
+    /// Save basic auth credentials for a profile.
+    Auth(ConfigProfileAuthArgs),
 }
 
-/// Arguments for `profiles rm`.
+/// Arguments for `config profile use`.
 #[derive(Args, Debug)]
-pub struct ProfilesRmArgs {
-    /// Profile name to remove.
+pub struct ConfigProfileUseArgs {
+    /// Profile name.
     #[arg(value_parser = validate_slug)]
     pub name: String,
 }
 
-/// Arguments for `profiles add`.
+/// Arguments for `config profile set`.
 #[derive(Args, Debug)]
-pub struct ProfilesAddArgs {
-    /// Profile name to create.
+pub struct ConfigProfileSetArgs {
+    /// Profile name.
     #[arg(value_parser = validate_slug)]
     pub name: String,
-
     /// Organization slug.
     #[arg(short = 'o', long, value_parser = validate_slug)]
     pub organization: Option<String>,
-
     /// Stage.
     #[arg(short = 'g', long)]
     pub stage: Option<Stage>,
+}
+
+/// Arguments for `config profile rm`.
+#[derive(Args, Debug)]
+pub struct ConfigProfileRmArgs {
+    /// Profile name.
+    #[arg(value_parser = validate_slug)]
+    pub name: String,
+    /// Skip confirmation prompt.
+    #[arg(long)]
+    pub yes: bool,
+}
+
+/// Arguments for `config profile add`.
+#[derive(Args, Debug)]
+pub struct ConfigProfileAddArgs {
+    /// Profile name.
+    #[arg(value_parser = validate_slug)]
+    pub name: String,
+    /// Organization slug.
+    #[arg(short = 'o', long, value_parser = validate_slug)]
+    pub organization: Option<String>,
+    /// Stage.
+    #[arg(short = 'g', long)]
+    pub stage: Option<Stage>,
+    /// Set as default profile after creation.
+    #[arg(long = "use")]
+    pub make_active: bool,
+}
+
+/// Arguments for `config profile auth`.
+#[derive(Args, Debug)]
+pub struct ConfigProfileAuthArgs {
+    /// Profile name.
+    #[arg(value_parser = validate_slug)]
+    pub name: String,
+    /// Username.
+    #[arg(short = 'u', long)]
+    pub username: Option<String>,
+    /// Password (prompted securely if not provided).
+    #[arg(short = 'P', long)]
+    pub password: Option<String>,
+}
+
+/// Arguments for `config updates`.
+#[derive(Args, Debug)]
+pub struct ConfigUpdatesArgs {
+    #[command(subcommand)]
+    pub command: ConfigUpdatesCommands,
+}
+
+/// Subcommands for `config updates`.
+#[derive(Subcommand, Debug)]
+pub enum ConfigUpdatesCommands {
+    /// Show the current update setting.
+    Show,
+    /// Enable automatic updates.
+    Enable,
+    /// Disable automatic updates.
+    Disable,
 }
 
 /// Arguments for the `clinician` subcommand.
@@ -186,32 +258,6 @@ pub struct CliniciansAssignArgs {
 pub struct CliniciansTargetArgs {
     /// Clinician UUID or email address.
     pub target: String,
-}
-
-/// Arguments for the `basic` subcommand.
-#[derive(Args, Debug)]
-pub struct BasicArgs {
-    #[command(subcommand)]
-    pub command: BasicCommands,
-}
-
-/// Subcommands for `basic`.
-#[derive(Subcommand, Debug)]
-pub enum BasicCommands {
-    /// Store basic auth credentials for an organization and stage.
-    Set(BasicSetArgs),
-}
-
-/// Arguments for `basic set`.
-#[derive(Args, Debug)]
-pub struct BasicSetArgs {
-    /// Username.
-    #[arg(short = 'u', long)]
-    pub username: Option<String>,
-
-    /// Password (prompted securely if not provided).
-    #[arg(short = 'P', long)]
-    pub password: Option<String>,
 }
 
 /// Arguments for the `auth` subcommand.

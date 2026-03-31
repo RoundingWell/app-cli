@@ -12,7 +12,10 @@ use clap::Parser;
 use std::path::PathBuf;
 
 use api::resolve_api;
-use cli::{AuthCommands, BasicCommands, Cli, CliniciansCommands, Commands, ProfilesCommands};
+use cli::{
+    AuthCommands, Cli, CliniciansCommands, Commands, ConfigCommands, ConfigProfileCommands,
+    ConfigUpdatesCommands,
+};
 use config::{config_path, default_config_dir, load_config, resolve_profile, AppContext};
 use output::Output;
 
@@ -37,7 +40,6 @@ fn build_ctx(
     Ok(AppContext {
         config_dir,
         profile,
-        organization,
         stage,
         base_url,
     })
@@ -69,8 +71,10 @@ async fn run(cli: Cli, out: &Output) -> Result<()> {
     }
 
     // Run version check and auto-update before the command, except when the
-    // user is explicitly running `rw update` (to avoid a redundant double-check).
-    if !matches!(cli.command, Commands::Update) {
+    // user is explicitly running `rw update` (to avoid a redundant double-check),
+    // or when the user is explicitly running `rw config` (they may be disabling
+    // auto updates).
+    if !matches!(cli.command, Commands::Update | Commands::Config(_)) {
         version_check::check_and_update(&config_dir, &mut config, &cfg_path, out).await;
     }
 
@@ -92,35 +96,6 @@ async fn run(cli: Cli, out: &Output) -> Result<()> {
                 }
             }
         }
-        Commands::Basic(basic_args) => {
-            let ctx = build_ctx(&config, cli.profile.as_deref(), config_dir)?;
-            match basic_args.command {
-                BasicCommands::Set(args) => {
-                    commands::basic::set(&ctx, args.username, args.password, out)?;
-                }
-            }
-        }
-        Commands::Profile(profile_args) => {
-            commands::profile::set_default(&profile_args.name, &mut config, &cfg_path, out)?;
-        }
-        Commands::Profiles(profiles_args) => match profiles_args.command {
-            None => {
-                commands::profile::list(&config, out);
-            }
-            Some(ProfilesCommands::Add(args)) => {
-                commands::profile::add(
-                    &args.name,
-                    args.organization,
-                    args.stage,
-                    &mut config,
-                    &cfg_path,
-                    out,
-                )?;
-            }
-            Some(ProfilesCommands::Rm(args)) => {
-                commands::profile::rm(&args.name, &mut config, &cfg_path, out)?;
-            }
-        },
         Commands::Clinicians(clinician_args) => {
             let ctx = build_ctx(&config, cli.profile.as_deref(), config_dir)?;
             match clinician_args.command {
@@ -154,6 +129,42 @@ async fn run(cli: Cli, out: &Output) -> Result<()> {
         Commands::Update => {
             commands::update::run(out).await?;
         }
+        Commands::Config(config_args) => match config_args.command {
+            ConfigCommands::Profile(profile_args) => match profile_args.command {
+                ConfigProfileCommands::List => {
+                    commands::config::profile_list(&config, out);
+                }
+                ConfigProfileCommands::Show => {
+                    commands::config::profile_show(&config, &config_dir, out)?;
+                }
+                ConfigProfileCommands::Use(args) => {
+                    commands::config::profile_use(&args.name, &mut config, &cfg_path, out)?;
+                }
+                ConfigProfileCommands::Set(args) => {
+                    commands::config::profile_set(args, &mut config, &cfg_path, out)?;
+                }
+                ConfigProfileCommands::Rm(args) => {
+                    commands::config::profile_rm(args, &mut config, &cfg_path, &config_dir, out)?;
+                }
+                ConfigProfileCommands::Add(args) => {
+                    commands::config::profile_add(args, &mut config, &cfg_path, out)?;
+                }
+                ConfigProfileCommands::Auth(args) => {
+                    commands::config::profile_auth(args, &config, &config_dir, out)?;
+                }
+            },
+            ConfigCommands::Updates(updates_args) => match updates_args.command {
+                ConfigUpdatesCommands::Show => {
+                    commands::config::updates_show(&config, out);
+                }
+                ConfigUpdatesCommands::Enable => {
+                    commands::config::updates_enable(&mut config, &cfg_path, out)?;
+                }
+                ConfigUpdatesCommands::Disable => {
+                    commands::config::updates_disable(&mut config, &cfg_path, out)?;
+                }
+            },
+        },
     }
 
     Ok(())

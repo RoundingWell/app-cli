@@ -9,7 +9,6 @@ use crate::cli::Stage;
 pub struct AppContext {
     pub config_dir: PathBuf,
     pub profile: String,
-    pub organization: String,
     pub stage: Stage,
     pub base_url: String,
 }
@@ -106,7 +105,7 @@ pub fn resolve_profile(config: &Config, profile: Option<&str>) -> Result<(String
         Ok((name.to_string(), p.organization.clone(), p.stage.clone()))
     } else {
         anyhow::bail!(
-            "no profile selected; run `rw profile <name>` to set a default, or pass --profile"
+            "no profile selected; run `rw config profile use <name>` to set a default, or pass --profile"
         )
     }
 }
