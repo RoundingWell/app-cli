@@ -210,17 +210,17 @@ impl CommandOutput for PrepareOutput {
 }
 
 #[derive(Debug, Serialize)]
-pub struct AssignOutput {
+pub struct GrantOutput {
     pub clinician_id: String,
     pub clinician_name: String,
     pub role_id: String,
     pub role_name: String,
 }
 
-impl CommandOutput for AssignOutput {
+impl CommandOutput for GrantOutput {
     fn plain(&self) -> String {
         format!(
-            "{} ({}) assigned to '{}' role",
+            "{} ({}) granted '{}' role",
             self.clinician_name, self.clinician_id, self.role_name
         )
     }
@@ -261,7 +261,7 @@ impl CommandOutput for ClinicianUpdateOutput {
 
 // --- Public command functions ---
 
-pub async fn assign(ctx: &AppContext, target: &str, role_target: &str, out: &Output) -> Result<()> {
+pub async fn grant(ctx: &AppContext, target: &str, role_target: &str, out: &Output) -> Result<()> {
     let auth_header = require_auth(ctx).await?;
     let client = Client::new();
     let clinician_uuid = if Uuid::parse_str(target).is_ok() {
@@ -279,7 +279,7 @@ pub async fn assign(ctx: &AppContext, target: &str, role_target: &str, out: &Out
         &role_id,
     )
     .await?;
-    out.print(&AssignOutput {
+    out.print(&GrantOutput {
         clinician_id,
         clinician_name,
         role_id,
@@ -1000,8 +1000,8 @@ mod tests {
     }
 
     #[test]
-    fn test_assign_output_plain() {
-        let output = AssignOutput {
+    fn test_grant_output_plain() {
+        let output = GrantOutput {
             clinician_id: "11111111-1111-1111-1111-111111111111".to_string(),
             clinician_name: "Joe Smith".to_string(),
             role_id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa".to_string(),
@@ -1009,13 +1009,13 @@ mod tests {
         };
         assert_eq!(
             output.plain(),
-            "Joe Smith (11111111-1111-1111-1111-111111111111) assigned to 'admin' role"
+            "Joe Smith (11111111-1111-1111-1111-111111111111) granted 'admin' role"
         );
     }
 
     #[test]
-    fn test_assign_output_json_fields() {
-        let output = AssignOutput {
+    fn test_grant_output_json_fields() {
+        let output = GrantOutput {
             clinician_id: "clin-id".to_string(),
             clinician_name: "Joe Smith".to_string(),
             role_id: "role-id".to_string(),
@@ -1043,7 +1043,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_assign_by_uuid_and_role_name() {
+    async fn test_grant_by_uuid_and_role_name() {
         let _auth = TestAuthGuard::new();
         let mut server = Server::new_async().await;
         let clinician_uuid = "55555555-5555-5555-5555-555555555555";
@@ -1071,7 +1071,7 @@ mod tests {
             .await;
 
         let out = Output { json: false };
-        assign(
+        grant(
             &_auth.app_context(&server.url()),
             clinician_uuid,
             "admin",
@@ -1085,7 +1085,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_assign_by_email_and_role_uuid() {
+    async fn test_grant_by_email_and_role_uuid() {
         let _auth = TestAuthGuard::new();
         let mut server = Server::new_async().await;
         let clinician_uuid = "66666666-6666-6666-6666-666666666666";
@@ -1122,7 +1122,7 @@ mod tests {
             .await;
 
         let out = Output { json: false };
-        assign(&_auth.app_context(&server.url()), email, role_uuid, &out)
+        grant(&_auth.app_context(&server.url()), email, role_uuid, &out)
             .await
             .unwrap();
 
@@ -1132,7 +1132,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_assign_role_not_found_returns_error() {
+    async fn test_grant_role_not_found_returns_error() {
         let _auth = TestAuthGuard::new();
         let mut server = Server::new_async().await;
         let clinician_uuid = "77777777-7777-7777-7777-777777777777";
@@ -1146,7 +1146,7 @@ mod tests {
             .await;
 
         let out = Output { json: false };
-        let result = assign(
+        let result = grant(
             &_auth.app_context(&server.url()),
             clinician_uuid,
             "nonexistent",
@@ -1161,7 +1161,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_assign_role_uuid_is_case_insensitive() {
+    async fn test_grant_role_uuid_is_case_insensitive() {
         let _auth = TestAuthGuard::new();
         let mut server = Server::new_async().await;
         let clinician_uuid = "88888888-8888-8888-8888-888888888888";
@@ -1190,7 +1190,7 @@ mod tests {
             .await;
 
         let out = Output { json: false };
-        assign(
+        grant(
             &_auth.app_context(&server.url()),
             clinician_uuid,
             role_uuid_upper,
