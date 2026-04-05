@@ -99,6 +99,9 @@ async fn run(cli: Cli, out: &Output) -> Result<()> {
         Commands::Clinicians(clinician_args) => {
             let ctx = build_ctx(&config, cli.profile.as_deref(), config_dir)?;
             match clinician_args.command {
+                CliniciansCommands::Assign(args) => {
+                    commands::clinicians::assign(&ctx, &args.target, &args.team, out).await?;
+                }
                 CliniciansCommands::Grant(args) => {
                     commands::clinicians::grant(&ctx, &args.target, &args.role, out).await?;
                 }
