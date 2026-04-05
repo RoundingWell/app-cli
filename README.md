@@ -117,6 +117,14 @@ rw clinicians assign joe@example.com 60c0e3b8-64b6-491f-a502-7346d14b3192
 rw clinicians prepare joe@example.com
 rw clinicians prepare 60fda0c4-eca0-434a-80d8-fd4e490aa051
 
+# Update a clinician attribute (by UUID, email, or "me")
+rw clinicians update joe@example.com --field name --value "Jane Doe"
+rw clinicians update 60fda0c4-eca0-434a-80d8-fd4e490aa051 --field email --value jane@example.com
+rw clinicians update me --field npi --value 1234567890
+rw clinicians update me --field credentials --value "RN,MD"
+rw clinicians update me --field npi          # omit --value to clear (sends null)
+rw clinicians update me --field credentials  # omit --value to clear (sends [])
+
 # Use a named profile
 rw clinicians enable joe@example.com --profile mercy
 ```
