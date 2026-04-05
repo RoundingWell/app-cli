@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-04-05
+
+### Added
+
+- `rw api` supports dot-path keys for `--field` (e.g. `--field data.attributes.name=Alice`)
+
 ## [0.5.0] - 2026-03-31
 
 ### Changed
@@ -70,7 +76,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Initial release of the `rw` CLI tool
 
-[Unreleased]: https://github.com/RoundingWell/app-cli/compare/0.5.0...HEAD
+[Unreleased]: https://github.com/RoundingWell/app-cli/compare/0.6.0...HEAD
+[0.6.0]: https://github.com/RoundingWell/app-cli/compare/0.5.0...0.6.0
 [0.5.0]: https://github.com/RoundingWell/app-cli/compare/0.4.1...0.5.0
 [0.4.1]: https://github.com/RoundingWell/app-cli/compare/0.4.0...0.4.1
 [0.4.0]: https://github.com/RoundingWell/app-cli/compare/0.3.1...0.4.0
