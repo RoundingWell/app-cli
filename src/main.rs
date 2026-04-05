@@ -114,6 +114,17 @@ async fn run(cli: Cli, out: &Output) -> Result<()> {
                 CliniciansCommands::Prepare(args) => {
                     commands::clinicians::prepare(&ctx, &args.target, out).await?;
                 }
+                CliniciansCommands::Register(args) => {
+                    commands::clinicians::register(
+                        &ctx,
+                        &args.email,
+                        &args.name,
+                        args.role.as_deref(),
+                        args.team.as_deref(),
+                        out,
+                    )
+                    .await?;
+                }
                 CliniciansCommands::Update(args) => {
                     commands::clinicians::update(
                         &ctx,

@@ -122,6 +122,12 @@ rw clinicians grant joe@example.com 60c0e3b8-64b6-491f-a502-7346d14b3192
 rw clinicians prepare joe@example.com
 rw clinicians prepare 60fda0c4-eca0-434a-80d8-fd4e490aa051
 
+# Register a new clinician
+rw clinicians register joe@example.com "Joe Smith"
+rw clinicians register joe@example.com "Joe Smith" --role employee
+rw clinicians register joe@example.com "Joe Smith" --team nursing
+rw clinicians register joe@example.com "Joe Smith" --role employee --team NUR
+
 # Update a clinician attribute (by UUID, email, or "me")
 rw clinicians update joe@example.com --field name --value "Jane Doe"
 rw clinicians update 60fda0c4-eca0-434a-80d8-fd4e490aa051 --field email --value jane@example.com

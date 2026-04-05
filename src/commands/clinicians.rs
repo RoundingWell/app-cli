@@ -277,6 +277,19 @@ impl CommandOutput for ClinicianUpdateOutput {
     }
 }
 
+#[derive(Debug, Serialize)]
+pub struct ClinicianRegisterOutput {
+    pub id: String,
+    pub name: String,
+    pub email: String,
+}
+
+impl CommandOutput for ClinicianRegisterOutput {
+    fn plain(&self) -> String {
+        format!("{} ({}) registered", self.name, self.id)
+    }
+}
+
 // --- Public command functions ---
 
 pub async fn grant(ctx: &AppContext, target: &str, role_target: &str, out: &Output) -> Result<()> {
@@ -447,6 +460,82 @@ pub async fn update(
         patch_clinician_attribute(&client, &ctx.base_url, &auth_header, &uuid, field, value)
             .await?;
     out.print(&result);
+    Ok(())
+}
+
+pub async fn register(
+    ctx: &AppContext,
+    email: &str,
+    name: &str,
+    role_target: Option<&str>,
+    team_target: Option<&str>,
+    out: &Output,
+) -> Result<()> {
+    // Validate inputs before any API call
+    validate_field("name", Some(name))?;
+    validate_field("email", Some(email))?;
+
+    let auth_header = require_auth(ctx).await?;
+    let client = Client::new();
+
+    // Resolve role and team before POST
+    let role = if let Some(rt) = role_target {
+        Some(resolve_role(&client, &ctx.base_url, &auth_header, rt).await?)
+    } else {
+        None
+    };
+    let team = if let Some(tt) = team_target {
+        Some(resolve_team(&client, &ctx.base_url, &auth_header, tt).await?)
+    } else {
+        None
+    };
+
+    // Build JSON:API POST body
+    let mut data = serde_json::json!({
+        "type": "clinicians",
+        "attributes": {
+            "email": email,
+            "name": name
+        }
+    });
+
+    if role.is_some() || team.is_some() {
+        let mut relationships = serde_json::Map::new();
+        if let Some((ref role_id, _)) = role {
+            relationships.insert(
+                "role".to_string(),
+                serde_json::json!({"data": {"type": "roles", "id": role_id}}),
+            );
+        }
+        if let Some((ref team_id, _)) = team {
+            relationships.insert(
+                "team".to_string(),
+                serde_json::json!({"data": {"type": "teams", "id": team_id}}),
+            );
+        }
+        data["relationships"] = serde_json::Value::Object(relationships);
+    }
+
+    let body = serde_json::json!({ "data": data });
+
+    let url = format!("{}/clinicians", ctx.base_url.trim_end_matches('/'));
+    let req = apply_auth(client.post(&url), &auth_header).json(&body);
+    let resp = req.send().await.context("POST /clinicians failed")?;
+    let status = resp.status();
+    let body_text = resp.text().await.context("failed to read response body")?;
+
+    if !status.is_success() {
+        bail!("API returned {}: {}", status, body_text);
+    }
+
+    let response: ClinicianSingleResponse =
+        serde_json::from_str(&body_text).context("failed to parse clinician response")?;
+
+    out.print(&ClinicianRegisterOutput {
+        id: response.data.id,
+        name: response.data.attributes.name,
+        email: response.data.attributes.email,
+    });
     Ok(())
 }
 
@@ -2427,5 +2516,226 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
         assert!(err.contains("422"), "expected 422 status in: {}", err);
+    }
+
+    // --- register tests ---
+
+    #[tokio::test]
+    async fn test_register_success_no_role_no_team() {
+        let _auth = TestAuthGuard::new();
+        let mut server = Server::new_async().await;
+        let uuid = "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee";
+
+        let post_mock = server
+            .mock("POST", "/clinicians")
+            .with_status(201)
+            .with_header("content-type", "application/json")
+            .with_body(clinician_response(
+                uuid,
+                "Jane Doe",
+                "jane@example.com",
+                true,
+            ))
+            .create_async()
+            .await;
+
+        let out = Output { json: false };
+        register(
+            &_auth.app_context(&server.url()),
+            "jane@example.com",
+            "Jane Doe",
+            None,
+            None,
+            &out,
+        )
+        .await
+        .unwrap();
+
+        post_mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_register_with_role() {
+        let _auth = TestAuthGuard::new();
+        let mut server = Server::new_async().await;
+        let uuid = "ffffffff-ffff-ffff-ffff-ffffffffffff";
+        let role_uuid = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+
+        let roles_mock = server
+            .mock("GET", "/roles")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(role_list_response(&[(role_uuid, "Staff")]))
+            .create_async()
+            .await;
+
+        let post_mock = server
+            .mock("POST", "/clinicians")
+            .with_status(201)
+            .with_header("content-type", "application/json")
+            .with_body(clinician_response(
+                uuid,
+                "Jane Doe",
+                "jane@example.com",
+                true,
+            ))
+            .create_async()
+            .await;
+
+        let out = Output { json: false };
+        register(
+            &_auth.app_context(&server.url()),
+            "jane@example.com",
+            "Jane Doe",
+            Some("Staff"),
+            None,
+            &out,
+        )
+        .await
+        .unwrap();
+
+        roles_mock.assert_async().await;
+        post_mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_register_with_team() {
+        let _auth = TestAuthGuard::new();
+        let mut server = Server::new_async().await;
+        let uuid = "11111111-aaaa-aaaa-aaaa-111111111111";
+        let team_uuid = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
+
+        let teams_mock = server
+            .mock("GET", "/teams")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(team_list_response(&[(team_uuid, "ICU", "ICU")]))
+            .create_async()
+            .await;
+
+        let post_mock = server
+            .mock("POST", "/clinicians")
+            .with_status(201)
+            .with_header("content-type", "application/json")
+            .with_body(clinician_response(
+                uuid,
+                "Jane Doe",
+                "jane@example.com",
+                true,
+            ))
+            .create_async()
+            .await;
+
+        let out = Output { json: false };
+        register(
+            &_auth.app_context(&server.url()),
+            "jane@example.com",
+            "Jane Doe",
+            None,
+            Some("ICU"),
+            &out,
+        )
+        .await
+        .unwrap();
+
+        teams_mock.assert_async().await;
+        post_mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_register_blank_name_returns_error_without_network() {
+        let _auth = TestAuthGuard::new();
+        let out = Output { json: false };
+        let result = register(
+            &_auth.app_context("http://unused"),
+            "jane@example.com",
+            "   ",
+            None,
+            None,
+            &out,
+        )
+        .await;
+        assert!(result.is_err());
+        assert!(
+            result.unwrap_err().to_string().contains("invalid name"),
+            "expected name validation error"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_register_invalid_email_returns_error_without_network() {
+        let _auth = TestAuthGuard::new();
+        let out = Output { json: false };
+        let result = register(
+            &_auth.app_context("http://unused"),
+            "not-an-email",
+            "Jane Doe",
+            None,
+            None,
+            &out,
+        )
+        .await;
+        assert!(result.is_err());
+        assert!(
+            result.unwrap_err().to_string().contains("invalid email"),
+            "expected email validation error"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_register_invalid_role_returns_error_without_post() {
+        let _auth = TestAuthGuard::new();
+        let mut server = Server::new_async().await;
+
+        let roles_mock = server
+            .mock("GET", "/roles")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(role_list_response(&[]))
+            .create_async()
+            .await;
+
+        let out = Output { json: false };
+        let result = register(
+            &_auth.app_context(&server.url()),
+            "jane@example.com",
+            "Jane Doe",
+            Some("nonexistent-role"),
+            None,
+            &out,
+        )
+        .await;
+
+        assert!(result.is_err());
+        roles_mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_register_api_error_surfaced() {
+        let _auth = TestAuthGuard::new();
+        let mut server = Server::new_async().await;
+
+        let post_mock = server
+            .mock("POST", "/clinicians")
+            .with_status(422)
+            .with_body(r#"{"errors":[{"detail":"email already taken"}]}"#)
+            .create_async()
+            .await;
+
+        let out = Output { json: false };
+        let result = register(
+            &_auth.app_context(&server.url()),
+            "jane@example.com",
+            "Jane Doe",
+            None,
+            None,
+            &out,
+        )
+        .await;
+
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("422"), "expected 422 in: {}", err);
+        post_mock.assert_async().await;
     }
 }
