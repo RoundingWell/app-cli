@@ -352,9 +352,9 @@ pub async fn prepare(ctx: &AppContext, target: &str, out: &Output) -> Result<()>
 
     // Step 3: Derive configuration
     let (role_name_target, team_name_target, hidden) = if is_staff {
-        ("rw", "other", true)
+        ("rw", "OT", true)
     } else {
-        ("employee", "nurse", false)
+        ("employee", "NUR", false)
     };
 
     // Step 4: Resolve role UUID
@@ -782,18 +782,11 @@ async fn resolve_team(
             .map(|t| (t.id, t.attributes.name))
             .ok_or_else(|| anyhow::anyhow!("no team found with id '{}'", target))
     } else {
-        if let Some(team) = list
-            .data
-            .iter()
-            .find(|t| t.attributes.abbr.to_lowercase() == target_lower)
-        {
-            return Ok((team.id.clone(), team.attributes.name.clone()));
-        }
         list.data
             .into_iter()
-            .find(|t| t.attributes.name.to_lowercase() == target_lower)
+            .find(|t| t.attributes.abbr.to_lowercase() == target_lower)
             .map(|t| (t.id, t.attributes.name))
-            .ok_or_else(|| anyhow::anyhow!("no team found with abbr or name '{}'", target))
+            .ok_or_else(|| anyhow::anyhow!("no team found with uuid or abbr '{}'", target))
     }
 }
 
@@ -1369,6 +1362,7 @@ mod tests {
         role_name: &str,
         team_uuid: &str,
         team_name: &str,
+        team_abbr: &str,
         workspaces: &[(&str, bool)],
     ) -> PrepareMocks {
         server
@@ -1396,7 +1390,7 @@ mod tests {
             .mock("GET", "/teams")
             .with_status(200)
             .with_header("content-type", "application/json")
-            .with_body(team_list_response(&[(team_uuid, team_name, team_name)]))
+            .with_body(team_list_response(&[(team_uuid, team_name, team_abbr)]))
             .create_async()
             .await;
 
@@ -1445,7 +1439,8 @@ mod tests {
             role_uuid,
             "rw",
             team_uuid,
-            "other",
+            "Other Team",
+            "OT",
             &[],
         )
         .await;
@@ -1490,7 +1485,7 @@ mod tests {
             .mock("GET", "/teams")
             .with_status(200)
             .with_header("content-type", "application/json")
-            .with_body(team_list_response(&[(team_uuid, "nurse", "nurse")]))
+            .with_body(team_list_response(&[(team_uuid, "Nursing", "NUR")]))
             .create_async()
             .await;
 
@@ -1536,7 +1531,8 @@ mod tests {
             role_uuid,
             "rw",
             team_uuid,
-            "other",
+            "Other Team",
+            "OT",
             &[(ws1, true), (ws2, true)],
         )
         .await;
@@ -1586,7 +1582,8 @@ mod tests {
             role_uuid,
             "rw",
             team_uuid,
-            "other",
+            "Other Team",
+            "OT",
             &[(ws_default, true), (ws_non_default, false)],
         )
         .await;
@@ -1635,7 +1632,8 @@ mod tests {
             role_uuid,
             "employee",
             team_uuid,
-            "nurse",
+            "Nursing",
+            "NUR",
             &[],
         )
         .await;
@@ -1723,7 +1721,7 @@ mod tests {
         assert!(result
             .unwrap_err()
             .to_string()
-            .contains("no team found with abbr or name 'other'"));
+            .contains("no team found with uuid or abbr 'OT'"));
     }
 
     #[test]
@@ -1808,7 +1806,8 @@ mod tests {
             role_uuid,
             "rw",
             team_uuid,
-            "other",
+            "Other Team",
+            "OT",
             &[(ws_ok, true), (ws_fail, true)],
         )
         .await;
@@ -2184,53 +2183,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_assign_by_email_and_team_name() {
-        let _auth = TestAuthGuard::new();
-        let mut server = Server::new_async().await;
-        let clinician_uuid = "aaaaaaaa-0000-0000-0000-000000000001";
-        let team_uuid = "bbbbbbbb-0000-0000-0000-000000000001";
-        let email = "alice@example.com";
-
-        let clinicians_mock = server
-            .mock("GET", "/clinicians")
-            .with_status(200)
-            .with_header("content-type", "application/json")
-            .with_body(clinician_list_response(&[(
-                clinician_uuid,
-                "Alice",
-                email,
-                true,
-            )]))
-            .create_async()
-            .await;
-
-        let teams_mock = server
-            .mock("GET", "/teams")
-            .with_status(200)
-            .with_header("content-type", "application/json")
-            .with_body(team_list_response(&[(team_uuid, "Nursing", "NUR")]))
-            .create_async()
-            .await;
-
-        let patch_mock = server
-            .mock("PATCH", format!("/clinicians/{}", clinician_uuid).as_str())
-            .with_status(200)
-            .with_header("content-type", "application/json")
-            .with_body(clinician_response(clinician_uuid, "Alice", email, true))
-            .create_async()
-            .await;
-
-        let out = Output { json: false };
-        assign(&_auth.app_context(&server.url()), email, "Nursing", &out)
-            .await
-            .unwrap();
-
-        clinicians_mock.assert_async().await;
-        teams_mock.assert_async().await;
-        patch_mock.assert_async().await;
-    }
-
-    #[tokio::test]
     async fn test_assign_by_uuid_and_team_uuid() {
         let _auth = TestAuthGuard::new();
         let mut server = Server::new_async().await;
@@ -2320,58 +2272,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_assign_team_abbr_takes_priority_over_name() {
-        // Team A has name "NUR", Team B has abbr "NUR".
-        // When target is "NUR", Team B (abbr match) must win regardless of list order.
-        let _auth = TestAuthGuard::new();
-        let mut server = Server::new_async().await;
-        let clinician_uuid = "aaaaaaaa-0000-0000-0000-000000000005";
-        let team_a_uuid = "bbbbbbbb-0000-0000-0000-000000000010";
-        let team_b_uuid = "bbbbbbbb-0000-0000-0000-000000000011";
-
-        let teams_mock = server
-            .mock("GET", "/teams")
-            .with_status(200)
-            .with_header("content-type", "application/json")
-            // Team A appears first but matches by name; Team B matches by abbr and should win.
-            .with_body(team_list_response(&[
-                (team_a_uuid, "NUR", "other"),
-                (team_b_uuid, "Nursing", "NUR"),
-            ]))
-            .create_async()
-            .await;
-
-        let patch_mock = server
-            .mock("PATCH", format!("/clinicians/{}", clinician_uuid).as_str())
-            .with_status(200)
-            .with_header("content-type", "application/json")
-            .with_body(clinician_response(
-                clinician_uuid,
-                "Eve",
-                "eve@example.com",
-                true,
-            ))
-            .create_async()
-            .await;
-
-        let out = Output { json: false };
-        assign(
-            &_auth.app_context(&server.url()),
-            clinician_uuid,
-            "NUR",
-            &out,
-        )
-        .await
-        .unwrap();
-
-        // Verify the PATCH was called with team_b_uuid (abbr match), not team_a_uuid (name match).
-        // The mock server enforces the correct UUID was used in the URL via the patch_mock above,
-        // but we can't directly assert the body here; the teams_mock and patch_mock firing is sufficient.
-        teams_mock.assert_async().await;
-        patch_mock.assert_async().await;
-    }
-
-    #[tokio::test]
     async fn test_assign_team_not_found_returns_error() {
         let _auth = TestAuthGuard::new();
         let mut server = Server::new_async().await;
@@ -2398,7 +2298,7 @@ mod tests {
         assert!(result
             .unwrap_err()
             .to_string()
-            .contains("no team found with abbr or name 'nonexistent'"));
+            .contains("no team found with uuid or abbr 'nonexistent'"));
     }
 
     #[tokio::test]
