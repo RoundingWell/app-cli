@@ -127,8 +127,8 @@ rw clinicians enable joe@example.com --profile mercy
 # GET /api/clinicians (default profile)
 rw api clinicians
 
-# POST with JSON body fields
-rw api clinicians --method POST --field name="Alice Avalon" --field email=alice.avalon@mercy.org
+# POST with JSON body fields using dot-path keys
+rw api clinicians --method POST --field data.attributes.name="Alice Avalon" --field data.attributes.email=alice.avalon@mercy.org --field data.relationships.role.data.type=roles --field data.relationships.role.data.id=<uuid>
 
 # Add extra request headers
 rw api clinicians --header "Accept: application/json"

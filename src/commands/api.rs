@@ -2,8 +2,8 @@ use anyhow::{bail, Context, Result};
 use jaq_core::load::{Arena, File, Loader};
 use jaq_core::{data, unwrap_valr, Compiler, Ctx, Vars};
 use jaq_json::{read, Val};
+use json_dotpath::DotPaths;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
-use std::collections::HashMap;
 
 use crate::config::AppContext;
 
@@ -59,11 +59,7 @@ pub async fn run(
 
     // Parse -f field=value pairs and attach as JSON body.
     if !fields.is_empty() {
-        let mut body: HashMap<String, String> = HashMap::new();
-        for f in fields {
-            let (k, v) = parse_field(f).with_context(|| format!("invalid field: {:?}", f))?;
-            body.insert(k, v);
-        }
+        let body = build_body(fields)?;
         req = req.json(&body);
     }
 
@@ -169,9 +165,136 @@ fn parse_field(s: &str) -> Result<(String, String)> {
     Ok((s[..eq].to_string(), s[eq + 1..].to_string()))
 }
 
+/// Build a nested JSON body from `"key=value"` field strings.
+///
+/// Keys may use dot-path notation (e.g. `attributes.name`) to produce nested
+/// objects. Multiple fields that share a common prefix are merged. Returns an
+/// error when a dot-path key conflicts with an already-set leaf value.
+fn build_body(fields: &[String]) -> Result<serde_json::Value> {
+    let mut body = serde_json::Value::Object(serde_json::Map::new());
+    for f in fields {
+        let (k, v) = parse_field(f).with_context(|| format!("invalid field: {:?}", f))?;
+        body.dot_set(&k, serde_json::Value::String(v))
+            .map_err(|_| {
+                anyhow::anyhow!(
+                    "Unable to set field {} because it conflicts with another field",
+                    k
+                )
+            })?;
+    }
+    Ok(body)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // --- build_body / dot-path tests ---
+
+    #[test]
+    fn test_build_body_dot_path_single() {
+        let body = build_body(&["attributes.name=John".to_string()]).unwrap();
+        assert_eq!(body, serde_json::json!({"attributes": {"name": "John"}}));
+    }
+
+    #[test]
+    fn test_build_body_dot_path_shared_prefix() {
+        let body = build_body(&[
+            "attributes.first=John".to_string(),
+            "attributes.last=Doe".to_string(),
+        ])
+        .unwrap();
+        assert_eq!(
+            body,
+            serde_json::json!({"attributes": {"first": "John", "last": "Doe"}})
+        );
+    }
+
+    #[test]
+    fn test_build_body_dot_path_deep() {
+        let id = "550e8400-e29b-41d4-a716-446655440000";
+        let body = build_body(&[format!("relationships.team.data.id={id}")]).unwrap();
+        assert_eq!(
+            body,
+            serde_json::json!({"relationships": {"team": {"data": {"id": id}}}})
+        );
+    }
+
+    #[test]
+    fn test_build_body_mixed_flat_and_dot_path() {
+        let body = build_body(&[
+            "type=clinicians".to_string(),
+            "attributes.name=Jane".to_string(),
+        ])
+        .unwrap();
+        assert_eq!(
+            body,
+            serde_json::json!({"type": "clinicians", "attributes": {"name": "Jane"}})
+        );
+    }
+
+    #[test]
+    fn test_build_body_dot_in_value_not_split() {
+        let body = build_body(&["attributes.email=user@example.com".to_string()]).unwrap();
+        assert_eq!(
+            body,
+            serde_json::json!({"attributes": {"email": "user@example.com"}})
+        );
+    }
+
+    #[test]
+    fn test_field_integer_segment_creates_array() {
+        let body = build_body(&["items.0.id=abc".to_string()]).unwrap();
+        assert_eq!(body, serde_json::json!({"items": [{"id": "abc"}]}));
+    }
+
+    #[test]
+    fn test_field_multiple_integer_segments() {
+        let body =
+            build_body(&["items.0.id=abc".to_string(), "items.1.id=def".to_string()]).unwrap();
+        assert_eq!(
+            body,
+            serde_json::json!({"items": [{"id": "abc"}, {"id": "def"}]})
+        );
+    }
+
+    #[test]
+    fn test_field_integer_segment_nested() {
+        let uuid = "uuid-123";
+        let body = build_body(&[
+            format!("relationships.workspaces.data.0.type=workspaces"),
+            format!("relationships.workspaces.data.0.id={uuid}"),
+        ])
+        .unwrap();
+        assert_eq!(
+            body,
+            serde_json::json!({"relationships": {"workspaces": {"data": [{"type": "workspaces", "id": uuid}]}}})
+        );
+    }
+
+    #[test]
+    fn test_build_body_key_conflict_error() {
+        let result = build_body(&["foo=bar".to_string(), "foo.baz=qux".to_string()]);
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert_eq!(
+            msg,
+            "Unable to set field foo.baz because it conflicts with another field"
+        );
+    }
+
+    #[test]
+    fn test_build_body_key_conflict_error_multilevel() {
+        let result = build_body(&["a.b=x".to_string(), "a.b.c=y".to_string()]);
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert_eq!(
+            msg,
+            "Unable to set field a.b.c because it conflicts with another field"
+        );
+    }
+
+    // --- existing parse_header / parse_field tests ---
 
     #[test]
     fn test_parse_header_valid() {
