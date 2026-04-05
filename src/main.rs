@@ -111,6 +111,16 @@ async fn run(cli: Cli, out: &Output) -> Result<()> {
                 CliniciansCommands::Prepare(args) => {
                     commands::clinicians::prepare(&ctx, &args.target, out).await?;
                 }
+                CliniciansCommands::Update(args) => {
+                    commands::clinicians::update(
+                        &ctx,
+                        &args.target,
+                        &args.field,
+                        args.value.as_deref(),
+                        out,
+                    )
+                    .await?;
+                }
             }
         }
         Commands::Api(api_args) => {

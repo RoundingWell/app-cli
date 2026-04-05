@@ -242,6 +242,8 @@ pub enum CliniciansCommands {
     Disable(CliniciansTargetArgs),
     /// Prepare a clinician with the appropriate role, team, and workspace memberships.
     Prepare(CliniciansTargetArgs),
+    /// Update a clinician attribute by UUID, email, or "me".
+    Update(CliniciansUpdateArgs),
 }
 
 /// Arguments for `clinicians assign`.
@@ -258,6 +260,19 @@ pub struct CliniciansAssignArgs {
 pub struct CliniciansTargetArgs {
     /// Clinician UUID or email address.
     pub target: String,
+}
+
+/// Arguments for `clinicians update`.
+#[derive(Args, Debug)]
+pub struct CliniciansUpdateArgs {
+    /// Clinician UUID, email address, or "me".
+    pub target: String,
+    /// Field to update (name, email, npi, credentials).
+    #[arg(long)]
+    pub field: String,
+    /// New value for the field (omit to clear npi or credentials).
+    #[arg(long)]
+    pub value: Option<String>,
 }
 
 /// Arguments for the `auth` subcommand.
