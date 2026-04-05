@@ -234,8 +234,8 @@ pub struct CliniciansArgs {
 /// Subcommands for `clinician`.
 #[derive(Subcommand, Debug)]
 pub enum CliniciansCommands {
-    /// Assign a role to a clinician by UUID or email.
-    Assign(CliniciansAssignArgs),
+    /// Grant a role to a clinician by UUID or email.
+    Grant(CliniciansGrantArgs),
     /// Enable a clinician by UUID or email.
     Enable(CliniciansTargetArgs),
     /// Disable a clinician by UUID or email.
@@ -246,9 +246,9 @@ pub enum CliniciansCommands {
     Update(CliniciansUpdateArgs),
 }
 
-/// Arguments for `clinicians assign`.
+/// Arguments for `clinicians grant`.
 #[derive(Args, Debug)]
-pub struct CliniciansAssignArgs {
+pub struct CliniciansGrantArgs {
     /// Clinician UUID or email address.
     pub target: String,
     /// Role UUID or name.
