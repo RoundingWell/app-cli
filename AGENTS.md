@@ -73,6 +73,7 @@ A multiple resource response example:
 - Only update CHANGELOG.md when drafting a release
 - Call out BREAKING changes with a warning ⚠️ symbol
 - Skip `ci` and `build` commits
+- Update compare links at the bottom of the file
 
 ## Git Tags
 
