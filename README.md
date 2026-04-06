@@ -109,6 +109,10 @@ rw config profile auth mercy --username alice \
 rw clinicians enable joe@example.com
 rw clinicians disable 60fda0c4-eca0-434a-80d8-fd4e490aa051
 
+# Assign a clinician (by UUID or email) to a team (by UUID or abbr)
+rw clinicians assign joe@example.com NUR
+rw clinicians assign joe@example.com 60c0e3b8-64b6-491f-a502-7346d14b3192
+
 # Grant a clinician (by UUID or email) a role (by UUID or name)
 rw clinicians grant joe@example.com admin
 rw clinicians grant joe@example.com 60c0e3b8-64b6-491f-a502-7346d14b3192
@@ -116,6 +120,12 @@ rw clinicians grant joe@example.com 60c0e3b8-64b6-491f-a502-7346d14b3192
 # Prepare a clinician: assigns the correct role, team, visibility, and default workspaces
 rw clinicians prepare joe@example.com
 rw clinicians prepare 60fda0c4-eca0-434a-80d8-fd4e490aa051
+
+# Register a new clinician
+rw clinicians register joe@example.com "Joe Smith"
+rw clinicians register joe@example.com "Joe Smith" --role employee
+rw clinicians register joe@example.com "Joe Smith" --team NUR
+rw clinicians register joe@example.com "Joe Smith" --role employee --team NUR
 
 # Update a clinician attribute (by UUID, email, or "me")
 rw clinicians update joe@example.com --field name --value "Jane Doe"

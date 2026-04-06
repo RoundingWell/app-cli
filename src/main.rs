@@ -99,6 +99,9 @@ async fn run(cli: Cli, out: &Output) -> Result<()> {
         Commands::Clinicians(clinician_args) => {
             let ctx = build_ctx(&config, cli.profile.as_deref(), config_dir)?;
             match clinician_args.command {
+                CliniciansCommands::Assign(args) => {
+                    commands::clinicians::assign(&ctx, &args.target, &args.team, out).await?;
+                }
                 CliniciansCommands::Grant(args) => {
                     commands::clinicians::grant(&ctx, &args.target, &args.role, out).await?;
                 }
@@ -110,6 +113,17 @@ async fn run(cli: Cli, out: &Output) -> Result<()> {
                 }
                 CliniciansCommands::Prepare(args) => {
                     commands::clinicians::prepare(&ctx, &args.target, out).await?;
+                }
+                CliniciansCommands::Register(args) => {
+                    commands::clinicians::register(
+                        &ctx,
+                        &args.email,
+                        &args.name,
+                        args.role.as_deref(),
+                        args.team.as_deref(),
+                        out,
+                    )
+                    .await?;
                 }
                 CliniciansCommands::Update(args) => {
                     commands::clinicians::update(

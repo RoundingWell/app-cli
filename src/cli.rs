@@ -234,6 +234,8 @@ pub struct CliniciansArgs {
 /// Subcommands for `clinician`.
 #[derive(Subcommand, Debug)]
 pub enum CliniciansCommands {
+    /// Assign a clinician to a team by UUID or email.
+    Assign(CliniciansAssignArgs),
     /// Grant a role to a clinician by UUID or email.
     Grant(CliniciansGrantArgs),
     /// Enable a clinician by UUID or email.
@@ -242,8 +244,19 @@ pub enum CliniciansCommands {
     Disable(CliniciansTargetArgs),
     /// Prepare a clinician with the appropriate role, team, and workspace memberships.
     Prepare(CliniciansTargetArgs),
+    /// Register a new clinician.
+    Register(CliniciansRegisterArgs),
     /// Update a clinician attribute by UUID, email, or "me".
     Update(CliniciansUpdateArgs),
+}
+
+/// Arguments for `clinicians assign`.
+#[derive(Args, Debug)]
+pub struct CliniciansAssignArgs {
+    /// Clinician UUID or email address.
+    pub target: String,
+    /// Team UUID or abbreviation.
+    pub team: String,
 }
 
 /// Arguments for `clinicians grant`.
@@ -273,6 +286,21 @@ pub struct CliniciansUpdateArgs {
     /// New value for the field (omit to clear npi or credentials).
     #[arg(long)]
     pub value: Option<String>,
+}
+
+/// Arguments for `clinicians register`.
+#[derive(Args, Debug)]
+pub struct CliniciansRegisterArgs {
+    /// Email address for the new clinician.
+    pub email: String,
+    /// Full name of the new clinician.
+    pub name: String,
+    /// Role UUID or name.
+    #[arg(long)]
+    pub role: Option<String>,
+    /// Team UUID or abbreviation.
+    #[arg(long)]
+    pub team: Option<String>,
 }
 
 /// Arguments for the `auth` subcommand.

@@ -140,6 +140,7 @@ struct ClinicianSingleResponse {
 #[derive(Debug, Deserialize)]
 struct TeamAttributes {
     name: String,
+    abbr: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -227,6 +228,23 @@ impl CommandOutput for GrantOutput {
 }
 
 #[derive(Debug, Serialize)]
+pub struct AssignTeamOutput {
+    pub clinician_id: String,
+    pub clinician_name: String,
+    pub team_id: String,
+    pub team_name: String,
+}
+
+impl CommandOutput for AssignTeamOutput {
+    fn plain(&self) -> String {
+        format!(
+            "{} ({}) assigned to '{}' team",
+            self.clinician_name, self.clinician_id, self.team_name
+        )
+    }
+}
+
+#[derive(Debug, Serialize)]
 pub struct ClinicianOutput {
     pub id: String,
     pub name: String,
@@ -259,6 +277,19 @@ impl CommandOutput for ClinicianUpdateOutput {
     }
 }
 
+#[derive(Debug, Serialize)]
+pub struct ClinicianRegisterOutput {
+    pub id: String,
+    pub name: String,
+    pub email: String,
+}
+
+impl CommandOutput for ClinicianRegisterOutput {
+    fn plain(&self) -> String {
+        format!("{} ({}) registered", self.name, self.id)
+    }
+}
+
 // --- Public command functions ---
 
 pub async fn grant(ctx: &AppContext, target: &str, role_target: &str, out: &Output) -> Result<()> {
@@ -288,6 +319,33 @@ pub async fn grant(ctx: &AppContext, target: &str, role_target: &str, out: &Outp
     Ok(())
 }
 
+pub async fn assign(ctx: &AppContext, target: &str, team_target: &str, out: &Output) -> Result<()> {
+    let auth_header = require_auth(ctx).await?;
+    let client = Client::new();
+    let clinician_uuid = if Uuid::parse_str(target).is_ok() {
+        target.to_string()
+    } else {
+        resolve_uuid_by_email(&client, &ctx.base_url, &auth_header, target).await?
+    };
+    let (team_id, team_name) =
+        resolve_team(&client, &ctx.base_url, &auth_header, team_target).await?;
+    let (clinician_id, clinician_name) = patch_clinician_team(
+        &client,
+        &ctx.base_url,
+        &auth_header,
+        &clinician_uuid,
+        &team_id,
+    )
+    .await?;
+    out.print(&AssignTeamOutput {
+        clinician_id,
+        clinician_name,
+        team_id,
+        team_name,
+    });
+    Ok(())
+}
+
 pub async fn prepare(ctx: &AppContext, target: &str, out: &Output) -> Result<()> {
     let auth_header = require_auth(ctx).await?;
     let client = Client::new();
@@ -307,9 +365,9 @@ pub async fn prepare(ctx: &AppContext, target: &str, out: &Output) -> Result<()>
 
     // Step 3: Derive configuration
     let (role_name_target, team_name_target, hidden) = if is_staff {
-        ("rw", "other", true)
+        ("rw", "OT", true)
     } else {
-        ("employee", "nurse", false)
+        ("employee", "NUR", false)
     };
 
     // Step 4: Resolve role UUID
@@ -402,6 +460,82 @@ pub async fn update(
         patch_clinician_attribute(&client, &ctx.base_url, &auth_header, &uuid, field, value)
             .await?;
     out.print(&result);
+    Ok(())
+}
+
+pub async fn register(
+    ctx: &AppContext,
+    email: &str,
+    name: &str,
+    role_target: Option<&str>,
+    team_target: Option<&str>,
+    out: &Output,
+) -> Result<()> {
+    // Validate inputs before any API call
+    validate_field("name", Some(name))?;
+    validate_field("email", Some(email))?;
+
+    let auth_header = require_auth(ctx).await?;
+    let client = Client::new();
+
+    // Resolve role and team before POST
+    let role = if let Some(rt) = role_target {
+        Some(resolve_role(&client, &ctx.base_url, &auth_header, rt).await?)
+    } else {
+        None
+    };
+    let team = if let Some(tt) = team_target {
+        Some(resolve_team(&client, &ctx.base_url, &auth_header, tt).await?)
+    } else {
+        None
+    };
+
+    // Build JSON:API POST body
+    let mut data = serde_json::json!({
+        "type": "clinicians",
+        "attributes": {
+            "email": email,
+            "name": name
+        }
+    });
+
+    if role.is_some() || team.is_some() {
+        let mut relationships = serde_json::Map::new();
+        if let Some((ref role_id, _)) = role {
+            relationships.insert(
+                "role".to_string(),
+                serde_json::json!({"data": {"type": "roles", "id": role_id}}),
+            );
+        }
+        if let Some((ref team_id, _)) = team {
+            relationships.insert(
+                "team".to_string(),
+                serde_json::json!({"data": {"type": "teams", "id": team_id}}),
+            );
+        }
+        data["relationships"] = serde_json::Value::Object(relationships);
+    }
+
+    let body = serde_json::json!({ "data": data });
+
+    let url = format!("{}/clinicians", ctx.base_url.trim_end_matches('/'));
+    let req = apply_auth(client.post(&url), &auth_header).json(&body);
+    let resp = req.send().await.context("POST /clinicians failed")?;
+    let status = resp.status();
+    let body_text = resp.text().await.context("failed to read response body")?;
+
+    if !status.is_success() {
+        bail!("API returned {}: {}", status, body_text);
+    }
+
+    let response: ClinicianSingleResponse =
+        serde_json::from_str(&body_text).context("failed to parse clinician response")?;
+
+    out.print(&ClinicianRegisterOutput {
+        id: response.data.id,
+        name: response.data.attributes.name,
+        email: response.data.attributes.email,
+    });
     Ok(())
 }
 
@@ -550,7 +684,6 @@ async fn resolve_role(
 ) -> Result<(String, String)> {
     let url = format!("{}/roles", base_url.trim_end_matches('/'));
     let req = apply_auth(client.get(&url), auth_header);
-
     let resp = req.send().await.context("GET /roles failed")?;
     let status = resp.status();
     let body = resp.text().await.context("failed to read response body")?;
@@ -561,16 +694,15 @@ async fn resolve_role(
 
     let list: RoleListResponse =
         serde_json::from_str(&body).context("failed to parse roles response")?;
+    let target_lower = role_target.to_lowercase();
 
     if Uuid::parse_str(role_target).is_ok() {
-        let target_lower = role_target.to_lowercase();
         list.data
             .into_iter()
             .find(|r| r.id.to_lowercase() == target_lower)
             .map(|r| (r.id, r.attributes.name))
             .ok_or_else(|| anyhow::anyhow!("no role found with id {}", role_target))
     } else {
-        let target_lower = role_target.to_lowercase();
         list.data
             .into_iter()
             .find(|r| r.attributes.name.to_lowercase() == target_lower)
@@ -601,6 +733,50 @@ async fn patch_clinician_role(
                     "data": {
                         "type": "roles",
                         "id": role_uuid
+                    }
+                }
+            }
+        }
+    });
+
+    let req = apply_auth(client.patch(&url), auth_header).json(&body);
+
+    let resp = req.send().await.context("PATCH /clinicians failed")?;
+    let status = resp.status();
+    let body = resp.text().await.context("failed to read response body")?;
+
+    if !status.is_success() {
+        bail!("API returned {}: {}", status, body);
+    }
+
+    let response: ClinicianSingleResponse =
+        serde_json::from_str(&body).context("failed to parse clinician response")?;
+
+    Ok((response.data.id, response.data.attributes.name))
+}
+
+async fn patch_clinician_team(
+    client: &Client,
+    base_url: &str,
+    auth_header: &str,
+    clinician_uuid: &str,
+    team_uuid: &str,
+) -> Result<(String, String)> {
+    let url = format!(
+        "{}/clinicians/{}",
+        base_url.trim_end_matches('/'),
+        clinician_uuid
+    );
+
+    let body = serde_json::json!({
+        "data": {
+            "type": "clinicians",
+            "id": clinician_uuid,
+            "relationships": {
+                "team": {
+                    "data": {
+                        "type": "teams",
+                        "id": team_uuid
                     }
                 }
             }
@@ -672,24 +848,35 @@ async fn resolve_team(
     client: &Client,
     base_url: &str,
     auth_header: &str,
-    name: &str,
+    target: &str,
 ) -> Result<(String, String)> {
     let url = format!("{}/teams", base_url.trim_end_matches('/'));
     let req = apply_auth(client.get(&url), auth_header);
     let resp = req.send().await.context("GET /teams failed")?;
     let status = resp.status();
     let body = resp.text().await.context("failed to read response body")?;
+
     if !status.is_success() {
         bail!("API returned {}: {}", status, body);
     }
+
     let list: TeamListResponse =
         serde_json::from_str(&body).context("failed to parse teams response")?;
-    let name_lower = name.to_lowercase();
-    list.data
-        .into_iter()
-        .find(|t| t.attributes.name.to_lowercase() == name_lower)
-        .map(|t| (t.id, t.attributes.name))
-        .ok_or_else(|| anyhow::anyhow!("no team found with name '{}'", name))
+    let target_lower = target.to_lowercase();
+
+    if Uuid::parse_str(target).is_ok() {
+        list.data
+            .into_iter()
+            .find(|t| t.id.to_lowercase() == target_lower)
+            .map(|t| (t.id, t.attributes.name))
+            .ok_or_else(|| anyhow::anyhow!("no team found with id '{}'", target))
+    } else {
+        list.data
+            .into_iter()
+            .find(|t| t.attributes.abbr.to_lowercase() == target_lower)
+            .map(|t| (t.id, t.attributes.name))
+            .ok_or_else(|| anyhow::anyhow!("no team found with uuid or abbr '{}'", target))
+    }
 }
 
 async fn fetch_default_clinician_workspace_uuids(
@@ -1217,14 +1404,14 @@ mod tests {
 
     // --- prepare helpers ---
 
-    fn team_list_response(teams: &[(&str, &str)]) -> String {
+    fn team_list_response(teams: &[(&str, &str, &str)]) -> String {
         let data: Vec<serde_json::Value> = teams
             .iter()
-            .map(|(id, name)| {
+            .map(|(id, name, abbr)| {
                 serde_json::json!({
                     "type": "teams",
                     "id": id,
-                    "attributes": { "name": name }
+                    "attributes": { "name": name, "abbr": abbr }
                 })
             })
             .collect();
@@ -1264,6 +1451,7 @@ mod tests {
         role_name: &str,
         team_uuid: &str,
         team_name: &str,
+        team_abbr: &str,
         workspaces: &[(&str, bool)],
     ) -> PrepareMocks {
         server
@@ -1291,7 +1479,7 @@ mod tests {
             .mock("GET", "/teams")
             .with_status(200)
             .with_header("content-type", "application/json")
-            .with_body(team_list_response(&[(team_uuid, team_name)]))
+            .with_body(team_list_response(&[(team_uuid, team_name, team_abbr)]))
             .create_async()
             .await;
 
@@ -1340,7 +1528,8 @@ mod tests {
             role_uuid,
             "rw",
             team_uuid,
-            "other",
+            "Other Team",
+            "OT",
             &[],
         )
         .await;
@@ -1385,7 +1574,7 @@ mod tests {
             .mock("GET", "/teams")
             .with_status(200)
             .with_header("content-type", "application/json")
-            .with_body(team_list_response(&[(team_uuid, "nurse")]))
+            .with_body(team_list_response(&[(team_uuid, "Nursing", "NUR")]))
             .create_async()
             .await;
 
@@ -1431,7 +1620,8 @@ mod tests {
             role_uuid,
             "rw",
             team_uuid,
-            "other",
+            "Other Team",
+            "OT",
             &[(ws1, true), (ws2, true)],
         )
         .await;
@@ -1481,7 +1671,8 @@ mod tests {
             role_uuid,
             "rw",
             team_uuid,
-            "other",
+            "Other Team",
+            "OT",
             &[(ws_default, true), (ws_non_default, false)],
         )
         .await;
@@ -1530,7 +1721,8 @@ mod tests {
             role_uuid,
             "employee",
             team_uuid,
-            "nurse",
+            "Nursing",
+            "NUR",
             &[],
         )
         .await;
@@ -1618,7 +1810,7 @@ mod tests {
         assert!(result
             .unwrap_err()
             .to_string()
-            .contains("no team found with name 'other'"));
+            .contains("no team found with uuid or abbr 'OT'"));
     }
 
     #[test]
@@ -1703,7 +1895,8 @@ mod tests {
             role_uuid,
             "rw",
             team_uuid,
-            "other",
+            "Other Team",
+            "OT",
             &[(ws_ok, true), (ws_fail, true)],
         )
         .await;
@@ -2064,7 +2257,139 @@ mod tests {
         );
     }
 
-    // 8.11 — API error response surfaced to caller
+    #[test]
+    fn test_assign_team_output_plain() {
+        let output = AssignTeamOutput {
+            clinician_id: "11111111-1111-1111-1111-111111111111".to_string(),
+            clinician_name: "Joe Smith".to_string(),
+            team_id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa".to_string(),
+            team_name: "Nursing".to_string(),
+        };
+        assert_eq!(
+            output.plain(),
+            "Joe Smith (11111111-1111-1111-1111-111111111111) assigned to 'Nursing' team"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_assign_by_uuid_and_team_uuid() {
+        let _auth = TestAuthGuard::new();
+        let mut server = Server::new_async().await;
+        let clinician_uuid = "aaaaaaaa-0000-0000-0000-000000000002";
+        let team_uuid = "bbbbbbbb-0000-0000-0000-000000000002";
+
+        let teams_mock = server
+            .mock("GET", "/teams")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(team_list_response(&[(team_uuid, "Nursing", "NUR")]))
+            .create_async()
+            .await;
+
+        let patch_mock = server
+            .mock("PATCH", format!("/clinicians/{}", clinician_uuid).as_str())
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(clinician_response(
+                clinician_uuid,
+                "Bob",
+                "bob@example.com",
+                true,
+            ))
+            .create_async()
+            .await;
+
+        let out = Output { json: false };
+        assign(
+            &_auth.app_context(&server.url()),
+            clinician_uuid,
+            team_uuid,
+            &out,
+        )
+        .await
+        .unwrap();
+
+        teams_mock.assert_async().await;
+        patch_mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_assign_by_email_and_team_abbr() {
+        let _auth = TestAuthGuard::new();
+        let mut server = Server::new_async().await;
+        let clinician_uuid = "aaaaaaaa-0000-0000-0000-000000000003";
+        let team_uuid = "bbbbbbbb-0000-0000-0000-000000000003";
+        let email = "carol@example.com";
+
+        let clinicians_mock = server
+            .mock("GET", "/clinicians")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(clinician_list_response(&[(
+                clinician_uuid,
+                "Carol",
+                email,
+                true,
+            )]))
+            .create_async()
+            .await;
+
+        let teams_mock = server
+            .mock("GET", "/teams")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(team_list_response(&[(team_uuid, "Nursing", "NUR")]))
+            .create_async()
+            .await;
+
+        let patch_mock = server
+            .mock("PATCH", format!("/clinicians/{}", clinician_uuid).as_str())
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(clinician_response(clinician_uuid, "Carol", email, true))
+            .create_async()
+            .await;
+
+        let out = Output { json: false };
+        assign(&_auth.app_context(&server.url()), email, "nur", &out)
+            .await
+            .unwrap();
+
+        clinicians_mock.assert_async().await;
+        teams_mock.assert_async().await;
+        patch_mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_assign_team_not_found_returns_error() {
+        let _auth = TestAuthGuard::new();
+        let mut server = Server::new_async().await;
+        let clinician_uuid = "aaaaaaaa-0000-0000-0000-000000000004";
+
+        let _teams_mock = server
+            .mock("GET", "/teams")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(team_list_response(&[]))
+            .create_async()
+            .await;
+
+        let out = Output { json: false };
+        let result = assign(
+            &_auth.app_context(&server.url()),
+            clinician_uuid,
+            "nonexistent",
+            &out,
+        )
+        .await;
+
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("no team found with uuid or abbr 'nonexistent'"));
+    }
+
     #[tokio::test]
     async fn test_update_api_error_surfaced() {
         let _auth = TestAuthGuard::new();
@@ -2091,5 +2416,226 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
         assert!(err.contains("422"), "expected 422 status in: {}", err);
+    }
+
+    // --- register tests ---
+
+    #[tokio::test]
+    async fn test_register_success_no_role_no_team() {
+        let _auth = TestAuthGuard::new();
+        let mut server = Server::new_async().await;
+        let uuid = "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee";
+
+        let post_mock = server
+            .mock("POST", "/clinicians")
+            .with_status(201)
+            .with_header("content-type", "application/json")
+            .with_body(clinician_response(
+                uuid,
+                "Jane Doe",
+                "jane@example.com",
+                true,
+            ))
+            .create_async()
+            .await;
+
+        let out = Output { json: false };
+        register(
+            &_auth.app_context(&server.url()),
+            "jane@example.com",
+            "Jane Doe",
+            None,
+            None,
+            &out,
+        )
+        .await
+        .unwrap();
+
+        post_mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_register_with_role() {
+        let _auth = TestAuthGuard::new();
+        let mut server = Server::new_async().await;
+        let uuid = "ffffffff-ffff-ffff-ffff-ffffffffffff";
+        let role_uuid = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+
+        let roles_mock = server
+            .mock("GET", "/roles")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(role_list_response(&[(role_uuid, "Staff")]))
+            .create_async()
+            .await;
+
+        let post_mock = server
+            .mock("POST", "/clinicians")
+            .with_status(201)
+            .with_header("content-type", "application/json")
+            .with_body(clinician_response(
+                uuid,
+                "Jane Doe",
+                "jane@example.com",
+                true,
+            ))
+            .create_async()
+            .await;
+
+        let out = Output { json: false };
+        register(
+            &_auth.app_context(&server.url()),
+            "jane@example.com",
+            "Jane Doe",
+            Some("Staff"),
+            None,
+            &out,
+        )
+        .await
+        .unwrap();
+
+        roles_mock.assert_async().await;
+        post_mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_register_with_team() {
+        let _auth = TestAuthGuard::new();
+        let mut server = Server::new_async().await;
+        let uuid = "11111111-aaaa-aaaa-aaaa-111111111111";
+        let team_uuid = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
+
+        let teams_mock = server
+            .mock("GET", "/teams")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(team_list_response(&[(team_uuid, "ICU", "ICU")]))
+            .create_async()
+            .await;
+
+        let post_mock = server
+            .mock("POST", "/clinicians")
+            .with_status(201)
+            .with_header("content-type", "application/json")
+            .with_body(clinician_response(
+                uuid,
+                "Jane Doe",
+                "jane@example.com",
+                true,
+            ))
+            .create_async()
+            .await;
+
+        let out = Output { json: false };
+        register(
+            &_auth.app_context(&server.url()),
+            "jane@example.com",
+            "Jane Doe",
+            None,
+            Some("ICU"),
+            &out,
+        )
+        .await
+        .unwrap();
+
+        teams_mock.assert_async().await;
+        post_mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_register_blank_name_returns_error_without_network() {
+        let _auth = TestAuthGuard::new();
+        let out = Output { json: false };
+        let result = register(
+            &_auth.app_context("http://unused"),
+            "jane@example.com",
+            "   ",
+            None,
+            None,
+            &out,
+        )
+        .await;
+        assert!(result.is_err());
+        assert!(
+            result.unwrap_err().to_string().contains("invalid name"),
+            "expected name validation error"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_register_invalid_email_returns_error_without_network() {
+        let _auth = TestAuthGuard::new();
+        let out = Output { json: false };
+        let result = register(
+            &_auth.app_context("http://unused"),
+            "not-an-email",
+            "Jane Doe",
+            None,
+            None,
+            &out,
+        )
+        .await;
+        assert!(result.is_err());
+        assert!(
+            result.unwrap_err().to_string().contains("invalid email"),
+            "expected email validation error"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_register_invalid_role_returns_error_without_post() {
+        let _auth = TestAuthGuard::new();
+        let mut server = Server::new_async().await;
+
+        let roles_mock = server
+            .mock("GET", "/roles")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(role_list_response(&[]))
+            .create_async()
+            .await;
+
+        let out = Output { json: false };
+        let result = register(
+            &_auth.app_context(&server.url()),
+            "jane@example.com",
+            "Jane Doe",
+            Some("nonexistent-role"),
+            None,
+            &out,
+        )
+        .await;
+
+        assert!(result.is_err());
+        roles_mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_register_api_error_surfaced() {
+        let _auth = TestAuthGuard::new();
+        let mut server = Server::new_async().await;
+
+        let post_mock = server
+            .mock("POST", "/clinicians")
+            .with_status(422)
+            .with_body(r#"{"errors":[{"detail":"email already taken"}]}"#)
+            .create_async()
+            .await;
+
+        let out = Output { json: false };
+        let result = register(
+            &_auth.app_context(&server.url()),
+            "jane@example.com",
+            "Jane Doe",
+            None,
+            None,
+            &out,
+        )
+        .await;
+
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("422"), "expected 422 in: {}", err);
+        post_mock.assert_async().await;
     }
 }
