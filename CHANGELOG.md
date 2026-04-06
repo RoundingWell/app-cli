@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-04-05
+
+### Changed
+
+- ⚠️ `rw clinicians assign` is renamed to `rw clinicians grant`
+
+### Added
+
+- `rw clinicians assign` — assign a clinician to a team by UUID or email
+- `rw clinicians register` — register a new clinician by email and name
+- `rw clinicians update` — update a clinician attribute by UUID, email, or "me"
+
 ## [0.6.0] - 2026-04-05
 
 ### Added
@@ -76,7 +88,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Initial release of the `rw` CLI tool
 
-[Unreleased]: https://github.com/RoundingWell/app-cli/compare/0.6.0...HEAD
+[Unreleased]: https://github.com/RoundingWell/app-cli/compare/0.7.0...HEAD
+[0.7.0]: https://github.com/RoundingWell/app-cli/compare/0.6.0...0.7.0
 [0.6.0]: https://github.com/RoundingWell/app-cli/compare/0.5.0...0.6.0
 [0.5.0]: https://github.com/RoundingWell/app-cli/compare/0.4.1...0.5.0
 [0.4.1]: https://github.com/RoundingWell/app-cli/compare/0.4.0...0.4.1
