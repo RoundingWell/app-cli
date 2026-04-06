@@ -597,7 +597,7 @@ async fn patch_clinician_attribute(
             "type": "clinicians",
             "id": uuid,
             "attributes": {
-                field: attr_value
+                (field): attr_value
             }
         }
     });
@@ -1985,6 +1985,49 @@ mod tests {
             uuid,
             "name",
             Some("Jane Doe"),
+            &out,
+        )
+        .await
+        .unwrap();
+
+        mock.assert_async().await;
+    }
+
+    // 8.1b — update sends correct field name as JSON key (not literal "field")
+    #[tokio::test]
+    async fn test_update_sends_correct_field_key() {
+        let _auth = TestAuthGuard::new();
+        let mut server = Server::new_async().await;
+        let uuid = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+
+        let mock = server
+            .mock("PATCH", format!("/clinicians/{}", uuid).as_str())
+            .match_body(mockito::Matcher::Json(serde_json::json!({
+                "data": {
+                    "type": "clinicians",
+                    "id": uuid,
+                    "attributes": { "email": "new@example.com" }
+                }
+            })))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(update_clinician_response(
+                uuid,
+                "Jane Doe",
+                "new@example.com",
+                true,
+                None,
+                &[],
+            ))
+            .create_async()
+            .await;
+
+        let out = Output { json: false };
+        update(
+            &_auth.app_context(&server.url()),
+            uuid,
+            "email",
+            Some("new@example.com"),
             &out,
         )
         .await
