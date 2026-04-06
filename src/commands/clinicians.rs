@@ -367,7 +367,17 @@ pub async fn prepare(ctx: &AppContext, target: &str, out: &Output) -> Result<()>
     let (role_name_target, team_name_target, hidden) = if is_staff {
         ("rw", "OT", true)
     } else {
-        ("employee", "NUR", false)
+        let role = ctx
+            .defaults
+            .get("role")
+            .map(String::as_str)
+            .unwrap_or("employee");
+        let team = ctx
+            .defaults
+            .get("team")
+            .map(String::as_str)
+            .unwrap_or("NUR");
+        (role, team, false)
     };
 
     // Step 4: Resolve role UUID
@@ -997,11 +1007,28 @@ mod tests {
 
         fn app_context(&self, base_url: &str) -> AppContext {
             use crate::cli::Stage;
+            use std::collections::BTreeMap;
             AppContext {
                 config_dir: self.dir.path().to_path_buf(),
                 profile: "test".to_string(),
                 stage: Stage::Dev,
                 base_url: base_url.to_string(),
+                defaults: BTreeMap::new(),
+            }
+        }
+
+        fn app_context_with_defaults(
+            &self,
+            base_url: &str,
+            defaults: std::collections::BTreeMap<String, String>,
+        ) -> AppContext {
+            use crate::cli::Stage;
+            AppContext {
+                config_dir: self.dir.path().to_path_buf(),
+                profile: "test".to_string(),
+                stage: Stage::Dev,
+                base_url: base_url.to_string(),
+                defaults,
             }
         }
     }
@@ -1924,6 +1951,120 @@ mod tests {
         // Command should succeed despite the workspace failure
         let result = prepare(&_auth.app_context(&server.url()), uuid, &out).await;
         assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_prepare_uses_config_default_for_non_staff() {
+        let _auth = TestAuthGuard::new();
+        let mut server = Server::new_async().await;
+        let uuid = "11111111-cccc-cccc-cccc-111111111111";
+        let role_uuid = "role-physician-uuid-0000-000000000000";
+        let team_uuid = "team-icu-uuid-00000-0000-000000000000";
+
+        let mocks = setup_prepare_mocks_by_uuid(
+            &mut server,
+            uuid,
+            "Carol Clinician",
+            "carol@external.com",
+            role_uuid,
+            "physician",
+            team_uuid,
+            "ICU Team",
+            "ICU",
+            &[],
+        )
+        .await;
+
+        let defaults = [
+            ("role".to_string(), "physician".to_string()),
+            ("team".to_string(), "ICU".to_string()),
+        ]
+        .into();
+        let out = Output { json: false };
+        prepare(
+            &_auth.app_context_with_defaults(&server.url(), defaults),
+            uuid,
+            &out,
+        )
+        .await
+        .unwrap();
+
+        mocks.roles_mock.assert_async().await;
+        mocks.teams_mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_prepare_falls_back_to_defaults_when_config_absent() {
+        let _auth = TestAuthGuard::new();
+        let mut server = Server::new_async().await;
+        let uuid = "22222222-cccc-cccc-cccc-222222222222";
+        let role_uuid = "role-emp-uuid-2222-2222-222222222222";
+        let team_uuid = "team-nur-uuid-2222-2222-222222222222";
+
+        let mocks = setup_prepare_mocks_by_uuid(
+            &mut server,
+            uuid,
+            "Dave Clinician",
+            "dave@external.com",
+            role_uuid,
+            "employee",
+            team_uuid,
+            "Nursing",
+            "NUR",
+            &[],
+        )
+        .await;
+
+        let out = Output { json: false };
+        // No defaults configured — should use hard-coded fallbacks
+        prepare(&_auth.app_context(&server.url()), uuid, &out)
+            .await
+            .unwrap();
+
+        mocks.roles_mock.assert_async().await;
+        mocks.teams_mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_prepare_ignores_non_staff_defaults_for_staff() {
+        let _auth = TestAuthGuard::new();
+        let mut server = Server::new_async().await;
+        let uuid = "33333333-cccc-cccc-cccc-333333333333";
+        let role_uuid = "role-rw-uuid-3333-3333-333333333333";
+        let team_uuid = "team-ot-uuid-33333-3333-333333333333";
+
+        let mocks = setup_prepare_mocks_by_uuid(
+            &mut server,
+            uuid,
+            "Eve Staff",
+            "eve@roundingwell.com",
+            role_uuid,
+            "rw",
+            team_uuid,
+            "Other Team",
+            "OT",
+            &[],
+        )
+        .await;
+
+        // Non-staff defaults set — but staff path should ignore them
+        let defaults = [
+            ("role".to_string(), "physician".to_string()),
+            ("team".to_string(), "ICU".to_string()),
+        ]
+        .into();
+        let out = Output { json: false };
+        prepare(
+            &_auth.app_context_with_defaults(&server.url(), defaults),
+            uuid,
+            &out,
+        )
+        .await
+        .unwrap();
+
+        // Staff path must use "rw"/"OT"
+        mocks.roles_mock.assert_async().await;
+        mocks.teams_mock.assert_async().await;
     }
 
     fn update_clinician_response(

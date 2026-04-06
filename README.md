@@ -195,6 +195,22 @@ rw config updates enable   # Enable automatic updates
 rw config updates disable  # Disable automatic updates
 ```
 
+### Profile Defaults
+
+Per-profile default values can be set for keys that commands use internally. Currently supported keys: `role`, `team`.
+
+```sh
+rw config default set role physician   # Set default role to "physician"
+rw config default set team ICU         # Set default team abbreviation to "ICU"
+rw config default get role             # Print current default role (no output if unset)
+rw config default get team             # Print current default team
+rw config default rm role              # Remove default role
+rw config default rm team              # Remove default team
+rw config default list                 # List all defined defaults (key=value, alphabetically)
+```
+
+Defaults are stored under each profile in `~/.config/rw/config.json`. When a default is not set, commands fall back to their built-in values (e.g., `clinicians prepare` uses `role=employee` and `team=NUR`).
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development instructions.
