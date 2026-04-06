@@ -106,6 +106,8 @@ pub enum Commands {
     Update,
     /// Manage CLI configuration, profiles, and update settings.
     Config(ConfigArgs),
+    /// Manage agent skills.
+    Skills(SkillsArgs),
 }
 
 /// Arguments for the `artifacts` subcommand.
@@ -511,6 +513,32 @@ pub struct ApiArgs {
     /// Output raw JSON without pretty-printing.
     #[arg(long)]
     pub raw: bool,
+}
+
+/// Arguments for the `skills` subcommand.
+#[derive(Args, Debug)]
+pub struct SkillsArgs {
+    #[command(subcommand)]
+    pub command: SkillsCommands,
+}
+
+/// Subcommands for `skills`.
+#[derive(Subcommand, Debug)]
+pub enum SkillsCommands {
+    /// Install the rw agent skill for Claude Code.
+    Install(SkillsInstallArgs),
+}
+
+/// Arguments for `skills install`.
+#[derive(Args, Debug)]
+pub struct SkillsInstallArgs {
+    /// Install to `.claude/` instead of global `~/.claude/`.
+    #[arg(long)]
+    pub local: bool,
+
+    /// Do not overwrite an existing skill file.
+    #[arg(long)]
+    pub no_clobber: bool,
 }
 
 #[cfg(test)]
