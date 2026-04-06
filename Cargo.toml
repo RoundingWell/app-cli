@@ -12,7 +12,7 @@ path = "src/main.rs"
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+reqwest = { version = "0.13", default-features = false, features = ["form", "json", "rustls"] }
 tokio = { version = "1", features = ["full"] }
 anyhow = "1"
 base64 = "0.22"
@@ -25,8 +25,8 @@ jaq-json = "2.0.0"
 uuid = { version = "1", features = ["v4"] }
 rpassword = "7"
 json_dotpath = "1"
-self_update = { version = "0.43", default-features = false, features = ["reqwest", "rustls", "archive-tar", "compression-flate2"] }
-validator = { version = "0.19", features = ["derive"] }
+self_update = { version = "0.44", default-features = false, features = ["reqwest", "rustls", "archive-tar", "compression-flate2"] }
+validator = { version = "0.20", features = ["derive"] }
 regex = "1"
 
 [dev-dependencies]
