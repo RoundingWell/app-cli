@@ -255,7 +255,7 @@ pub enum CliniciansCommands {
 pub struct CliniciansAssignArgs {
     /// Clinician UUID or email address.
     pub target: String,
-    /// Team UUID, abbreviated name, or full name.
+    /// Team UUID or abbreviation.
     pub team: String,
 }
 
@@ -298,7 +298,7 @@ pub struct CliniciansRegisterArgs {
     /// Role UUID or name.
     #[arg(long)]
     pub role: Option<String>,
-    /// Team UUID, abbreviation, or full name.
+    /// Team UUID or abbreviation.
     #[arg(long)]
     pub team: Option<String>,
 }

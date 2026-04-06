@@ -124,7 +124,7 @@ rw clinicians prepare 60fda0c4-eca0-434a-80d8-fd4e490aa051
 # Register a new clinician
 rw clinicians register joe@example.com "Joe Smith"
 rw clinicians register joe@example.com "Joe Smith" --role employee
-rw clinicians register joe@example.com "Joe Smith" --team nursing
+rw clinicians register joe@example.com "Joe Smith" --team NUR
 rw clinicians register joe@example.com "Joe Smith" --role employee --team NUR
 
 # Update a clinician attribute (by UUID, email, or "me")
