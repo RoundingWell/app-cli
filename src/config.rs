@@ -11,6 +11,7 @@ pub struct AppContext {
     pub profile: String,
     pub stage: Stage,
     pub base_url: String,
+    pub defaults: BTreeMap<String, String>,
 }
 
 /// Root configuration file structure for `~/.config/rw/config.json`.
@@ -31,6 +32,8 @@ pub struct Config {
 pub struct Profile {
     pub organization: String,
     pub stage: Stage,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default: Option<BTreeMap<String, String>>,
 }
 
 /// Returns the default config directory: `~/.config/rw`.
@@ -122,6 +125,7 @@ mod tests {
             Profile {
                 organization: "demonstration".to_string(),
                 stage: Stage::Prod,
+                default: None,
             },
         );
         let json = serde_json::to_string_pretty(&config).unwrap();
@@ -137,6 +141,7 @@ mod tests {
             Profile {
                 organization: "demonstration".to_string(),
                 stage: Stage::Prod,
+                default: None,
             },
         );
         let (profile, organization, stage) = resolve_profile(&config, Some("demo")).unwrap();
@@ -153,6 +158,7 @@ mod tests {
             Profile {
                 organization: "demonstration".to_string(),
                 stage: Stage::Sandbox,
+                default: None,
             },
         );
         config.default = Some("demo".to_string());
@@ -177,6 +183,7 @@ mod tests {
             Profile {
                 organization: "demonstration".to_string(),
                 stage: Stage::Prod,
+                default: None,
             },
         );
         let json = serde_json::to_string_pretty(&config).unwrap();
@@ -216,5 +223,37 @@ mod tests {
         }
         let config: Config = serde_json::from_value(value).unwrap();
         assert_eq!(config.default.as_deref(), Some("mercy"));
+    }
+
+    #[test]
+    fn test_profile_deserializes_without_default_field() {
+        let json = r#"{"organization":"mercy","stage":"prod"}"#;
+        let profile: Profile = serde_json::from_str(json).unwrap();
+        assert_eq!(profile.organization, "mercy");
+        assert!(profile.default.is_none());
+    }
+
+    #[test]
+    fn test_profile_deserializes_with_default_field() {
+        let json = r#"{"organization":"mercy","stage":"prod","default":{"role":"physician","team":"ICU"}}"#;
+        let profile: Profile = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            profile
+                .default
+                .as_ref()
+                .unwrap()
+                .get("role")
+                .map(String::as_str),
+            Some("physician")
+        );
+        assert_eq!(
+            profile
+                .default
+                .as_ref()
+                .unwrap()
+                .get("team")
+                .map(String::as_str),
+            Some("ICU")
+        );
     }
 }

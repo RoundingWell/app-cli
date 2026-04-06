@@ -13,8 +13,8 @@ use std::path::PathBuf;
 
 use api::resolve_api;
 use cli::{
-    AuthCommands, Cli, CliniciansCommands, Commands, ConfigCommands, ConfigProfileCommands,
-    ConfigUpdatesCommands,
+    AuthCommands, Cli, CliniciansCommands, Commands, ConfigCommands, ConfigDefaultCommands,
+    ConfigProfileCommands, ConfigUpdatesCommands,
 };
 use config::{config_path, default_config_dir, load_config, resolve_profile, AppContext};
 use output::Output;
@@ -37,11 +37,17 @@ fn build_ctx(
 ) -> Result<AppContext> {
     let (profile, organization, stage) = resolve_profile(config, profile)?;
     let base_url = resolve_api(&organization, &stage);
+    let defaults = config
+        .profiles
+        .get(&profile)
+        .and_then(|p| p.default.clone())
+        .unwrap_or_default();
     Ok(AppContext {
         config_dir,
         profile,
         stage,
         base_url,
+        defaults,
     })
 }
 
@@ -186,6 +192,33 @@ async fn run(cli: Cli, out: &Output) -> Result<()> {
                 }
                 ConfigUpdatesCommands::Disable => {
                     commands::config::updates_disable(&mut config, &cfg_path, out)?;
+                }
+            },
+            ConfigCommands::Default(default_args) => match default_args.command {
+                ConfigDefaultCommands::Set(args) => {
+                    commands::config::default_set(
+                        &args.key,
+                        &args.value,
+                        cli.profile.as_deref(),
+                        &mut config,
+                        &cfg_path,
+                        out,
+                    )?;
+                }
+                ConfigDefaultCommands::Get(args) => {
+                    commands::config::default_get(&args.key, cli.profile.as_deref(), &config, out)?;
+                }
+                ConfigDefaultCommands::Rm(args) => {
+                    commands::config::default_rm(
+                        &args.key,
+                        cli.profile.as_deref(),
+                        &mut config,
+                        &cfg_path,
+                        out,
+                    )?;
+                }
+                ConfigDefaultCommands::List => {
+                    commands::config::default_list(cli.profile.as_deref(), &config, out)?;
                 }
             },
         },

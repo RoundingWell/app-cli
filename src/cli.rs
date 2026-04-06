@@ -114,6 +114,51 @@ pub enum ConfigCommands {
     Profile(ConfigProfileArgs),
     /// Manage automatic update settings.
     Updates(ConfigUpdatesArgs),
+    /// Manage per-profile default values.
+    Default(ConfigDefaultArgs),
+}
+
+/// Arguments for `config default`.
+#[derive(Args, Debug)]
+pub struct ConfigDefaultArgs {
+    #[command(subcommand)]
+    pub command: ConfigDefaultCommands,
+}
+
+/// Subcommands for `config default`.
+#[derive(Subcommand, Debug)]
+pub enum ConfigDefaultCommands {
+    /// Set a default value for the active profile.
+    Set(ConfigDefaultSetArgs),
+    /// Get a default value for the active profile.
+    Get(ConfigDefaultGetArgs),
+    /// Remove a default value from the active profile.
+    Rm(ConfigDefaultRmArgs),
+    /// List all defined default values for the active profile.
+    List,
+}
+
+/// Arguments for `config default set`.
+#[derive(Args, Debug)]
+pub struct ConfigDefaultSetArgs {
+    /// Key to set (team, role).
+    pub key: String,
+    /// Value to assign.
+    pub value: String,
+}
+
+/// Arguments for `config default get`.
+#[derive(Args, Debug)]
+pub struct ConfigDefaultGetArgs {
+    /// Key to read (team, role).
+    pub key: String,
+}
+
+/// Arguments for `config default rm`.
+#[derive(Args, Debug)]
+pub struct ConfigDefaultRmArgs {
+    /// Key to remove (team, role).
+    pub key: String,
 }
 
 /// Arguments for `config profile`.

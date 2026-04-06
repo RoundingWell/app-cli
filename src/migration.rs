@@ -69,6 +69,7 @@ mod tests {
                 Profile {
                     organization: org.to_string(),
                     stage,
+                    default: None,
                 },
             );
         }
