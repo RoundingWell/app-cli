@@ -28,6 +28,7 @@ json_dotpath = "1"
 self_update = { version = "0.44", default-features = false, features = ["reqwest", "rustls", "archive-tar", "compression-flate2"] }
 validator = { version = "0.20", features = ["derive"] }
 regex = "1"
+tabled = "0.20.0"
 
 [dev-dependencies]
 mockito = "1"

@@ -637,7 +637,7 @@ pub fn default_rm(
         .as_mut()
         .and_then(|d| d.remove(key))
         .is_some();
-    if profile.default.as_ref().map_or(false, |d| d.is_empty()) {
+    if profile.default.as_ref().is_some_and(|d| d.is_empty()) {
         profile.default = None;
     }
     if was_set {

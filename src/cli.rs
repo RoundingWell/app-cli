@@ -94,11 +94,31 @@ pub enum Commands {
     Api(ApiArgs),
     /// Manage clinicians.
     Clinicians(CliniciansArgs),
+    /// Manage teams.
+    Teams(TeamsArgs),
     /// Update rw to the latest version.
     Update,
     /// Manage CLI configuration, profiles, and update settings.
     Config(ConfigArgs),
 }
+
+/// Arguments for the `teams` subcommand.
+#[derive(Args, Debug)]
+pub struct TeamsArgs {
+    #[command(subcommand)]
+    pub command: TeamsCommands,
+}
+
+/// Subcommands for `teams`.
+#[derive(Subcommand, Debug)]
+pub enum TeamsCommands {
+    /// List all teams.
+    List(TeamsListArgs),
+}
+
+/// Arguments for `teams list`.
+#[derive(Args, Debug)]
+pub struct TeamsListArgs {}
 
 /// Arguments for the `config` subcommand.
 #[derive(Args, Debug)]

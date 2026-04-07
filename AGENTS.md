@@ -15,6 +15,8 @@ cargo fmt               # Format
 
 ## Instructions
 
+- Use short sentences, avoid preamble and filler
+- Display tools and results, avoid explanation
 - Use test driven development (TDD) approach; first create tests that fail, then implement to satisfy tests
 - Always update docs (README.md, CONTRIBUTING.md, any relevant files in `docs/`) when adding or modifying commands
 - Always mock network boundaries in tests

@@ -137,22 +137,7 @@ struct ClinicianSingleResponse {
     data: ClinicianResource,
 }
 
-#[derive(Debug, Deserialize)]
-struct TeamAttributes {
-    name: String,
-    abbr: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct TeamResource {
-    id: String,
-    attributes: TeamAttributes,
-}
-
-#[derive(Debug, Deserialize)]
-struct TeamListResponse {
-    data: Vec<TeamResource>,
-}
+use super::teams::TeamListResponse;
 
 #[derive(Debug, Deserialize)]
 struct WorkspaceSettings {
@@ -293,7 +278,7 @@ impl CommandOutput for ClinicianRegisterOutput {
 // --- Public command functions ---
 
 pub async fn grant(ctx: &AppContext, target: &str, role_target: &str, out: &Output) -> Result<()> {
-    let auth_header = require_auth(ctx).await?;
+    let auth_header = super::auth::require_auth(ctx).await?;
     let client = Client::new();
     let clinician_uuid = if Uuid::parse_str(target).is_ok() {
         target.to_string()
@@ -320,7 +305,7 @@ pub async fn grant(ctx: &AppContext, target: &str, role_target: &str, out: &Outp
 }
 
 pub async fn assign(ctx: &AppContext, target: &str, team_target: &str, out: &Output) -> Result<()> {
-    let auth_header = require_auth(ctx).await?;
+    let auth_header = super::auth::require_auth(ctx).await?;
     let client = Client::new();
     let clinician_uuid = if Uuid::parse_str(target).is_ok() {
         target.to_string()
@@ -347,7 +332,7 @@ pub async fn assign(ctx: &AppContext, target: &str, team_target: &str, out: &Out
 }
 
 pub async fn prepare(ctx: &AppContext, target: &str, out: &Output) -> Result<()> {
-    let auth_header = require_auth(ctx).await?;
+    let auth_header = super::auth::require_auth(ctx).await?;
     let client = Client::new();
 
     // Step 1: Resolve clinician UUID and email
@@ -455,7 +440,7 @@ pub async fn update(
 ) -> Result<()> {
     validate_field(field, value)?;
 
-    let auth_header = require_auth(ctx).await?;
+    let auth_header = super::auth::require_auth(ctx).await?;
     let client = Client::new();
 
     let uuid = if target == "me" {
@@ -485,7 +470,7 @@ pub async fn register(
     validate_field("name", Some(name))?;
     validate_field("email", Some(email))?;
 
-    let auth_header = require_auth(ctx).await?;
+    let auth_header = super::auth::require_auth(ctx).await?;
     let client = Client::new();
 
     // Resolve role and team before POST
@@ -552,7 +537,7 @@ pub async fn register(
 // --- Private helpers ---
 
 async fn set_enabled(ctx: &AppContext, target: &str, enabled: bool, out: &Output) -> Result<()> {
-    let auth_header = require_auth(ctx).await?;
+    let auth_header = super::auth::require_auth(ctx).await?;
     let client = Client::new();
     let uuid = if Uuid::parse_str(target).is_ok() {
         target.to_string()
@@ -562,15 +547,6 @@ async fn set_enabled(ctx: &AppContext, target: &str, enabled: bool, out: &Output
     let result = patch_clinician(&client, &ctx.base_url, &auth_header, &uuid, enabled).await?;
     out.print(&result);
     Ok(())
-}
-
-/// Resolves auth credentials, returning the `Authorization` header value.
-/// Fails with a friendly message if no credentials are stored.
-async fn require_auth(ctx: &AppContext) -> Result<String> {
-    super::auth::resolve_auth(ctx)
-        .await?
-        .map(|a| super::auth::auth_header_value(&a))
-        .ok_or_else(|| anyhow::anyhow!("not authenticated – run `rw auth login` first"))
 }
 
 fn apply_auth(req: reqwest::RequestBuilder, auth_header: &str) -> reqwest::RequestBuilder {
