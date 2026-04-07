@@ -168,6 +168,9 @@ async fn run(cli: Cli, out: &Output) -> Result<()> {
                 WorkspacesCommands::List(_) => {
                     commands::workspaces::list(&ctx, out).await?;
                 }
+                WorkspacesCommands::Show(args) => {
+                    commands::workspaces::show(&ctx, &args.target, out).await?;
+                }
             }
         }
         Commands::Api(api_args) => {

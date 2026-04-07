@@ -189,6 +189,13 @@ rw workspaces list
 
 # Output as JSON
 rw workspaces list --json
+
+# Show a workspace by UUID or slug
+rw workspaces show cardiology
+rw workspaces show 11111111-1111-1111-1111-111111111111
+
+# Show as JSON
+rw workspaces show cardiology --json
 ```
 
 ## API requests
