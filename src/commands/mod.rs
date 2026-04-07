@@ -5,3 +5,4 @@ pub mod config;
 pub mod roles;
 pub mod teams;
 pub mod update;
+pub mod workspaces;

@@ -14,7 +14,7 @@ use std::path::PathBuf;
 use api::resolve_api;
 use cli::{
     AuthCommands, Cli, CliniciansCommands, Commands, ConfigCommands, ConfigDefaultCommands,
-    ConfigProfileCommands, ConfigUpdatesCommands, RolesCommands, TeamsCommands,
+    ConfigProfileCommands, ConfigUpdatesCommands, RolesCommands, TeamsCommands, WorkspacesCommands,
 };
 use config::{config_path, default_config_dir, load_config, resolve_profile, AppContext};
 use output::Output;
@@ -159,6 +159,14 @@ async fn run(cli: Cli, out: &Output) -> Result<()> {
                 }
                 RolesCommands::Show(args) => {
                     commands::roles::show(&ctx, &args.target, out).await?;
+                }
+            }
+        }
+        Commands::Workspaces(workspaces_args) => {
+            let ctx = build_ctx(&config, cli.profile.as_deref(), config_dir)?;
+            match workspaces_args.command {
+                WorkspacesCommands::List(_) => {
+                    commands::workspaces::list(&ctx, out).await?;
                 }
             }
         }
