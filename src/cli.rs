@@ -172,11 +172,20 @@ pub struct TeamsArgs {
 pub enum TeamsCommands {
     /// List all teams.
     List(TeamsListArgs),
+    /// Show a team by UUID or abbreviation.
+    Show(TeamsShowArgs),
 }
 
 /// Arguments for `teams list`.
 #[derive(Args, Debug)]
 pub struct TeamsListArgs {}
+
+/// Arguments for `teams show`.
+#[derive(Args, Debug)]
+pub struct TeamsShowArgs {
+    /// Team UUID or abbreviation.
+    pub target: String,
+}
 
 /// Arguments for the `config` subcommand.
 #[derive(Args, Debug)]

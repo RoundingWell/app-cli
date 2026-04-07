@@ -149,6 +149,9 @@ async fn run(cli: Cli, out: &Output) -> Result<()> {
                 TeamsCommands::List(_) => {
                     commands::teams::list(&ctx, out).await?;
                 }
+                TeamsCommands::Show(args) => {
+                    commands::teams::show(&ctx, &args.target, out).await?;
+                }
             }
         }
         Commands::Roles(roles_args) => {
