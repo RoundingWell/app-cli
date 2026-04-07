@@ -112,6 +112,16 @@ rw teams list
 rw teams list --json
 ```
 
+### Roles
+
+```sh
+# List all roles (sorted by label)
+rw roles list
+
+# Output as JSON
+rw roles list --json
+```
+
 ### Clinicians
 
 ```sh

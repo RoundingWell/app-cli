@@ -96,11 +96,31 @@ pub enum Commands {
     Clinicians(CliniciansArgs),
     /// Manage teams.
     Teams(TeamsArgs),
+    /// List roles.
+    Roles(RolesArgs),
     /// Update rw to the latest version.
     Update,
     /// Manage CLI configuration, profiles, and update settings.
     Config(ConfigArgs),
 }
+
+/// Arguments for the `roles` subcommand.
+#[derive(Args, Debug)]
+pub struct RolesArgs {
+    #[command(subcommand)]
+    pub command: RolesCommands,
+}
+
+/// Subcommands for `roles`.
+#[derive(Subcommand, Debug)]
+pub enum RolesCommands {
+    /// List all roles.
+    List(RolesListArgs),
+}
+
+/// Arguments for `roles list`.
+#[derive(Args, Debug)]
+pub struct RolesListArgs {}
 
 /// Arguments for the `teams` subcommand.
 #[derive(Args, Debug)]
