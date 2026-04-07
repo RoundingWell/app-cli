@@ -121,6 +121,11 @@ rw auth login --profile mercy
 ### Clinicians
 
 ```sh
+# Show a clinician (by UUID, email, or "me")
+rw clinicians show joe@example.com
+rw clinicians show 60fda0c4-eca0-434a-80d8-fd4e490aa051
+rw clinicians show me
+
 # Enable or disable a clinician (by UUID or email)
 rw clinicians enable joe@example.com
 rw clinicians disable 60fda0c4-eca0-434a-80d8-fd4e490aa051

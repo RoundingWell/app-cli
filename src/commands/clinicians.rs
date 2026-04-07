@@ -259,6 +259,30 @@ impl CommandOutput for ClinicianRegisterOutput {
     }
 }
 
+#[derive(Debug, Serialize)]
+pub struct ClinicianShowOutput {
+    pub id: String,
+    pub name: String,
+    pub email: String,
+    pub enabled: bool,
+    pub npi: Option<String>,
+    pub credentials: Vec<String>,
+}
+
+impl CommandOutput for ClinicianShowOutput {
+    fn plain(&self) -> String {
+        [
+            format!("id:          {}", self.id),
+            format!("name:        {}", self.name),
+            format!("email:       {}", self.email),
+            format!("enabled:     {}", self.enabled),
+            format!("npi:         {}", self.npi.as_deref().unwrap_or("")),
+            format!("credentials: {}", self.credentials.join(", ")),
+        ]
+        .join("\n")
+    }
+}
+
 // --- Public command functions ---
 
 pub async fn grant(ctx: &AppContext, target: &str, role_target: &str, out: &Output) -> Result<()> {
@@ -415,6 +439,29 @@ pub async fn disable(ctx: &AppContext, target: &str, out: &Output) -> Result<()>
     set_enabled(ctx, target, false, out).await
 }
 
+pub async fn show(ctx: &AppContext, target: &str, out: &Output) -> Result<()> {
+    let auth_header = super::auth::require_auth(ctx).await?;
+    let client = Client::new();
+
+    let clinician = if target == "me" {
+        fetch_clinician_me(&client, &ctx.base_url, &auth_header).await?
+    } else if Uuid::parse_str(target).is_ok() {
+        fetch_clinician_by_uuid(&client, &ctx.base_url, &auth_header, target).await?
+    } else {
+        fetch_clinician_by_email_filter(&client, &ctx.base_url, &auth_header, target).await?
+    };
+
+    out.print(&ClinicianShowOutput {
+        id: clinician.id,
+        name: clinician.attributes.name,
+        email: clinician.attributes.email,
+        enabled: clinician.attributes.enabled,
+        npi: clinician.attributes.npi,
+        credentials: clinician.attributes.credentials,
+    });
+    Ok(())
+}
+
 pub async fn update(
     ctx: &AppContext,
     target: &str,
@@ -549,6 +596,52 @@ async fn resolve_me(client: &Client, base_url: &str, auth_header: &str) -> Resul
     let response: ClinicianSingleResponse =
         serde_json::from_str(&body).context("failed to parse clinician response")?;
     Ok(response.data.id)
+}
+
+async fn fetch_clinician_me(
+    client: &Client,
+    base_url: &str,
+    auth_header: &str,
+) -> Result<ClinicianResource> {
+    let url = format!("{}/clinicians/me", base_url.trim_end_matches('/'));
+    let req = apply_auth(client.get(&url), auth_header);
+    let resp = req.send().await.context("GET /clinicians/me failed")?;
+    let status = resp.status();
+    let body = resp.text().await.context("failed to read response body")?;
+    if !status.is_success() {
+        bail!("API returned {}: {}", status, body);
+    }
+    let response: ClinicianSingleResponse =
+        serde_json::from_str(&body).context("failed to parse clinician response")?;
+    Ok(response.data)
+}
+
+async fn fetch_clinician_by_email_filter(
+    client: &Client,
+    base_url: &str,
+    auth_header: &str,
+    email: &str,
+) -> Result<ClinicianResource> {
+    let url = format!("{}/clinicians", base_url.trim_end_matches('/'));
+    let req = apply_auth(
+        client.get(&url).query(&[("filter[email]", email)]),
+        auth_header,
+    );
+    let resp = req
+        .send()
+        .await
+        .context("GET /clinicians?filter[email] failed")?;
+    let status = resp.status();
+    let body = resp.text().await.context("failed to read response body")?;
+    if !status.is_success() {
+        bail!("API returned {}: {}", status, body);
+    }
+    let list: ClinicianListResponse =
+        serde_json::from_str(&body).context("failed to parse clinicians response")?;
+    list.data
+        .into_iter()
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("no clinician found with email {}", email))
 }
 
 async fn patch_clinician_attribute(
@@ -2746,5 +2839,143 @@ mod tests {
         let err = result.unwrap_err().to_string();
         assert!(err.contains("422"), "expected 422 in: {}", err);
         post_mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_show_by_uuid() {
+        let _auth = TestAuthGuard::new();
+        let mut server = Server::new_async().await;
+        let uuid = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+
+        let mock = server
+            .mock("GET", format!("/clinicians/{}", uuid).as_str())
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(
+                serde_json::json!({
+                    "data": {
+                        "type": "clinicians",
+                        "id": uuid,
+                        "attributes": {
+                            "name": "Alice Show",
+                            "email": "alice@example.com",
+                            "enabled": true,
+                            "npi": "1234567890",
+                            "credentials": ["MD"]
+                        }
+                    }
+                })
+                .to_string(),
+            )
+            .create_async()
+            .await;
+
+        let out = Output { json: false };
+        let result = show(&_auth.app_context(&server.url()), uuid, &out).await;
+        assert!(result.is_ok(), "expected ok, got {:?}", result);
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_show_by_email() {
+        let _auth = TestAuthGuard::new();
+        let mut server = Server::new_async().await;
+        let uuid = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
+        let email = "bob@example.com";
+
+        let mock = server
+            .mock(
+                "GET",
+                mockito::Matcher::Regex(r"^/clinicians\?".to_string()),
+            )
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(
+                serde_json::json!({
+                    "data": [{
+                        "type": "clinicians",
+                        "id": uuid,
+                        "attributes": {
+                            "name": "Bob Show",
+                            "email": email,
+                            "enabled": true,
+                            "npi": null,
+                            "credentials": []
+                        }
+                    }]
+                })
+                .to_string(),
+            )
+            .create_async()
+            .await;
+
+        let out = Output { json: false };
+        let result = show(&_auth.app_context(&server.url()), email, &out).await;
+        assert!(result.is_ok(), "expected ok, got {:?}", result);
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_show_me() {
+        let _auth = TestAuthGuard::new();
+        let mut server = Server::new_async().await;
+        let uuid = "cccccccc-cccc-cccc-cccc-cccccccccccc";
+
+        let mock = server
+            .mock("GET", "/clinicians/me")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(
+                serde_json::json!({
+                    "data": {
+                        "type": "clinicians",
+                        "id": uuid,
+                        "attributes": {
+                            "name": "Carol Me",
+                            "email": "carol@roundingwell.com",
+                            "enabled": true,
+                            "npi": null,
+                            "credentials": []
+                        }
+                    }
+                })
+                .to_string(),
+            )
+            .create_async()
+            .await;
+
+        let out = Output { json: false };
+        let result = show(&_auth.app_context(&server.url()), "me", &out).await;
+        assert!(result.is_ok(), "expected ok, got {:?}", result);
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_show_by_email_not_found() {
+        let _auth = TestAuthGuard::new();
+        let mut server = Server::new_async().await;
+        let email = "nobody@example.com";
+
+        let mock = server
+            .mock(
+                "GET",
+                mockito::Matcher::Regex(r"^/clinicians\?".to_string()),
+            )
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(serde_json::json!({ "data": [] }).to_string())
+            .create_async()
+            .await;
+
+        let out = Output { json: false };
+        let result = show(&_auth.app_context(&server.url()), email, &out).await;
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains(email),
+            "expected email in error message: {}",
+            err
+        );
+        mock.assert_async().await;
     }
 }

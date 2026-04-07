@@ -378,6 +378,8 @@ pub enum CliniciansCommands {
     Prepare(CliniciansTargetArgs),
     /// Register a new clinician.
     Register(CliniciansRegisterArgs),
+    /// Show a clinician by UUID, email, or "me".
+    Show(CliniciansTargetArgs),
     /// Update a clinician attribute by UUID, email, or "me".
     Update(CliniciansUpdateArgs),
 }
