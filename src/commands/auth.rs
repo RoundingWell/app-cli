@@ -411,6 +411,15 @@ async fn try_refresh(stage: &Stage, refresh_token: &str) -> Result<AuthCache> {
     })
 }
 
+/// Returns the Authorization header value, or fails with a friendly message if
+/// no credentials are stored.
+pub async fn require_auth(ctx: &AppContext) -> Result<String> {
+    resolve_auth(ctx)
+        .await?
+        .map(|a| auth_header_value(&a))
+        .ok_or_else(|| anyhow::anyhow!("not authenticated – run `rw auth login` first"))
+}
+
 /// Attaches stored credentials to `req`. Returns the request unmodified if no
 /// credentials are stored (the caller will receive a 401 from the API).
 pub async fn attach_auth(

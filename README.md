@@ -102,6 +102,16 @@ rw config profile auth mercy --username alice \
 | `--username` | `-u`  | Username for basic auth |
 | `--password` | `-P`  | Password for basic auth |
 
+### Teams
+
+```sh
+# List all teams (sorted by abbreviation)
+rw teams list
+
+# Output as JSON
+rw teams list --json
+```
+
 ### Clinicians
 
 ```sh
