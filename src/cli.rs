@@ -98,11 +98,31 @@ pub enum Commands {
     Teams(TeamsArgs),
     /// List roles.
     Roles(RolesArgs),
+    /// List workspaces.
+    Workspaces(WorkspacesArgs),
     /// Update rw to the latest version.
     Update,
     /// Manage CLI configuration, profiles, and update settings.
     Config(ConfigArgs),
 }
+
+/// Arguments for the `workspaces` subcommand.
+#[derive(Args, Debug)]
+pub struct WorkspacesArgs {
+    #[command(subcommand)]
+    pub command: WorkspacesCommands,
+}
+
+/// Subcommands for `workspaces`.
+#[derive(Subcommand, Debug)]
+pub enum WorkspacesCommands {
+    /// List all workspaces.
+    List(WorkspacesListArgs),
+}
+
+/// Arguments for `workspaces list`.
+#[derive(Args, Debug)]
+pub struct WorkspacesListArgs {}
 
 /// Arguments for the `roles` subcommand.
 #[derive(Args, Debug)]

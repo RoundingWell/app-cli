@@ -24,8 +24,6 @@ RW_VERSION=1.2.3 bash -c "$(curl -fsSL https://raw.githubusercontent.com/Roundin
 
 ## Usage
 
-### Global options
-
 | Flag           | Short | Description               |
 |----------------|-------|---------------------------|
 | `--profile`    | `-p`  | Named profile to use      |
@@ -76,19 +74,23 @@ rw config profile add mercy -o mercy-clinic -g prod --json
 
 If either `--organization` or `--stage` is omitted, the CLI prompts for the missing value interactively. Passing `--json` without both flags is an error.
 
-### Authentication
+#### Profile Defaults
+
+Per-profile default values can be set for keys that commands use internally. Currently supported keys: `role`, `team`.
 
 ```sh
-rw auth login       # Open browser and authenticate via WorkOS
-rw auth status      # Show authentication status for current profile
-rw auth header      # Show the authentication header for current profile
-rw auth logout      # Remove stored credentials for current profile
-
-# Use a named profile
-rw auth login --profile mercy
+rw config default set role physician   # Set default role to "physician"
+rw config default set team ICU         # Set default team abbreviation to "ICU"
+rw config default get role             # Print current default role (no output if unset)
+rw config default get team             # Print current default team
+rw config default rm role              # Remove default role
+rw config default rm team              # Remove default team
+rw config default list                 # List all defined defaults (key=value, alphabetically)
 ```
 
-### Basic Auth
+_**Note:** When a default is not set, commands fall back to their built-in values._
+
+#### Using Basic Auth
 
 ```sh
 rw config profile auth mercy                        # Store basic auth credentials (prompted interactively)
@@ -102,31 +104,19 @@ rw config profile auth mercy --username alice \
 | `--username` | `-u`  | Username for basic auth |
 | `--password` | `-P`  | Password for basic auth |
 
-### Teams
+### Authentication
 
 ```sh
-# List all teams (sorted by abbreviation)
-rw teams list
+rw auth login       # Open browser and authenticate via WorkOS
+rw auth status      # Show authentication status for current profile
+rw auth header      # Show the authentication header for current profile
+rw auth logout      # Remove stored credentials for current profile
 
-# Output as JSON
-rw teams list --json
+# Use a named profile
+rw auth login --profile mercy
 ```
 
-### Roles
-
-```sh
-# List all roles (sorted by label)
-rw roles list
-
-# Output as JSON
-rw roles list --json
-
-# Show a role by UUID or name (includes id, name, label, description, permissions)
-rw roles show <uuid-or-name>
-
-# Output as JSON
-rw roles show <uuid-or-name> --json
-```
+## Tools
 
 ### Clinicians
 
@@ -165,7 +155,43 @@ rw clinicians update me --field credentials  # omit --value to clear (sends [])
 rw clinicians enable joe@example.com --profile mercy
 ```
 
-### API requests
+### Roles
+
+```sh
+# List all roles (sorted by label)
+rw roles list
+
+# Output as JSON
+rw roles list --json
+
+# Show a role by UUID or name (includes id, name, label, description, permissions)
+rw roles show <uuid-or-name>
+
+# Output as JSON
+rw roles show <uuid-or-name> --json
+```
+
+### Teams
+
+```sh
+# List all teams (sorted by abbreviation)
+rw teams list
+
+# Output as JSON
+rw teams list --json
+```
+
+### Workspaces
+
+```sh
+# List all workspaces (sorted by name)
+rw workspaces list
+
+# Output as JSON
+rw workspaces list --json
+```
+
+## API requests
 
 ```sh
 # GET /api/clinicians (default profile)
@@ -200,7 +226,7 @@ Stage-to-domain mapping:
 | `dev`     | `https://{organization}.roundingwell.dev`         |
 | `local`   | `http://localhost:8080`                           |
 
-### Updates
+## Updates
 
 ```sh
 rw update   # Update rw to the latest version
@@ -220,22 +246,6 @@ rw config updates show     # Show current update setting
 rw config updates enable   # Enable automatic updates
 rw config updates disable  # Disable automatic updates
 ```
-
-### Profile Defaults
-
-Per-profile default values can be set for keys that commands use internally. Currently supported keys: `role`, `team`.
-
-```sh
-rw config default set role physician   # Set default role to "physician"
-rw config default set team ICU         # Set default team abbreviation to "ICU"
-rw config default get role             # Print current default role (no output if unset)
-rw config default get team             # Print current default team
-rw config default rm role              # Remove default role
-rw config default rm team              # Remove default team
-rw config default list                 # List all defined defaults (key=value, alphabetically)
-```
-
-Defaults are stored under each profile in `~/.config/rw/config.json`. When a default is not set, commands fall back to their built-in values (e.g., `clinicians prepare` uses `role=employee` and `team=NUR`).
 
 ## Contributing
 
