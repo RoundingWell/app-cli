@@ -270,7 +270,7 @@ pub async fn grant(ctx: &AppContext, target: &str, role_target: &str, out: &Outp
         resolve_uuid_by_email(&client, &ctx.base_url, &auth_header, target).await?
     };
     let (role_id, role_name) =
-        resolve_role(&client, &ctx.base_url, &auth_header, role_target).await?;
+        super::roles::resolve_role(&client, &ctx.base_url, &auth_header, role_target).await?;
     let (clinician_id, clinician_name) = patch_clinician_role(
         &client,
         &ctx.base_url,
@@ -351,7 +351,7 @@ pub async fn prepare(ctx: &AppContext, target: &str, out: &Output) -> Result<()>
 
     // Step 4: Resolve role UUID
     let (role_id, role_name) =
-        resolve_role(&client, &ctx.base_url, &auth_header, role_name_target).await?;
+        super::roles::resolve_role(&client, &ctx.base_url, &auth_header, role_name_target).await?;
 
     // Step 5: Resolve team UUID
     let (team_id, team_name) =
@@ -459,7 +459,7 @@ pub async fn register(
 
     // Resolve role and team before POST
     let role = if let Some(rt) = role_target {
-        Some(resolve_role(&client, &ctx.base_url, &auth_header, rt).await?)
+        Some(super::roles::resolve_role(&client, &ctx.base_url, &auth_header, rt).await?)
     } else {
         None
     };
@@ -644,41 +644,6 @@ async fn patch_clinician(
         email: response.data.attributes.email,
         enabled: response.data.attributes.enabled,
     })
-}
-
-async fn resolve_role(
-    client: &Client,
-    base_url: &str,
-    auth_header: &str,
-    role_target: &str,
-) -> Result<(String, String)> {
-    let url = format!("{}/roles", base_url.trim_end_matches('/'));
-    let req = apply_auth(client.get(&url), auth_header);
-    let resp = req.send().await.context("GET /roles failed")?;
-    let status = resp.status();
-    let body = resp.text().await.context("failed to read response body")?;
-
-    if !status.is_success() {
-        bail!("API returned {}: {}", status, body);
-    }
-
-    let list: super::roles::RoleListResponse =
-        serde_json::from_str(&body).context("failed to parse roles response")?;
-    let target_lower = role_target.to_lowercase();
-
-    if Uuid::parse_str(role_target).is_ok() {
-        list.data
-            .into_iter()
-            .find(|r| r.id.to_lowercase() == target_lower)
-            .map(|r| (r.id, r.attributes.name))
-            .ok_or_else(|| anyhow::anyhow!("no role found with id {}", role_target))
-    } else {
-        list.data
-            .into_iter()
-            .find(|r| r.attributes.name.to_lowercase() == target_lower)
-            .map(|r| (r.id, r.attributes.name))
-            .ok_or_else(|| anyhow::anyhow!("no role found with name '{}'", role_target))
-    }
 }
 
 async fn patch_clinician_role(
