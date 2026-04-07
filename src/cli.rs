@@ -118,11 +118,20 @@ pub struct WorkspacesArgs {
 pub enum WorkspacesCommands {
     /// List all workspaces.
     List(WorkspacesListArgs),
+    /// Show a workspace by UUID or slug.
+    Show(WorkspacesShowArgs),
 }
 
 /// Arguments for `workspaces list`.
 #[derive(Args, Debug)]
 pub struct WorkspacesListArgs {}
+
+/// Arguments for `workspaces show`.
+#[derive(Args, Debug)]
+pub struct WorkspacesShowArgs {
+    /// Workspace UUID or slug.
+    pub target: String,
+}
 
 /// Arguments for the `roles` subcommand.
 #[derive(Args, Debug)]
