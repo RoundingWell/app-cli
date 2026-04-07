@@ -1,6 +1,7 @@
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use crate::config::AppContext;
 use crate::output::{CommandOutput, Output};
@@ -47,6 +48,24 @@ impl CommandOutput for TeamListOutput {
     }
 }
 
+// --- Show output types ---
+
+#[derive(Debug, Serialize)]
+pub struct TeamShowOutput {
+    pub id: String,
+    pub abbr: String,
+    pub name: String,
+}
+
+impl CommandOutput for TeamShowOutput {
+    fn plain(&self) -> String {
+        format!(
+            "ID:   {}\nAbbr: {}\nName: {}",
+            self.id, self.abbr, self.name
+        )
+    }
+}
+
 // --- Public command functions ---
 
 pub async fn list(ctx: &AppContext, out: &Output) -> Result<()> {
@@ -84,6 +103,49 @@ pub async fn list(ctx: &AppContext, out: &Output) -> Result<()> {
     teams.sort_by(|a, b| a.abbr.cmp(&b.abbr));
 
     out.print(&TeamListOutput { teams });
+    Ok(())
+}
+
+pub async fn show(ctx: &AppContext, target: &str, out: &Output) -> Result<()> {
+    let auth_header = super::auth::require_auth(ctx).await?;
+    let client = Client::new();
+
+    let url = format!("{}/teams", ctx.base_url.trim_end_matches('/'));
+    let resp = client
+        .get(&url)
+        .header(reqwest::header::AUTHORIZATION, &auth_header)
+        .send()
+        .await
+        .context("GET /teams failed")?;
+
+    let status = resp.status();
+    let body = resp.text().await.context("failed to read response body")?;
+
+    if !status.is_success() {
+        bail!("API returned {}: {}", status, body);
+    }
+
+    let list: TeamListResponse =
+        serde_json::from_str(&body).context("failed to parse teams response")?;
+    let target_lower = target.to_lowercase();
+
+    let team = if Uuid::parse_str(target).is_ok() {
+        list.data
+            .into_iter()
+            .find(|t| t.id.to_lowercase() == target_lower)
+            .ok_or_else(|| anyhow::anyhow!("no team found with id {}", target))?
+    } else {
+        list.data
+            .into_iter()
+            .find(|t| t.attributes.abbr.to_lowercase() == target_lower)
+            .ok_or_else(|| anyhow::anyhow!("no team found with abbr '{}'", target))?
+    };
+
+    out.print(&TeamShowOutput {
+        id: team.id,
+        abbr: team.attributes.abbr,
+        name: team.attributes.name,
+    });
     Ok(())
 }
 
@@ -192,6 +254,119 @@ mod tests {
 
         let out = Output { json: false };
         let result = list(&_auth.app_context(&server.url()), &out).await;
+        assert!(result.is_err());
+        mock.assert_async().await;
+    }
+
+    // --- show tests ---
+
+    #[tokio::test]
+    async fn test_show_by_uuid_plain() {
+        let _auth = TestAuthGuard::new();
+        let mut server = Server::new_async().await;
+
+        let mock = server
+            .mock("GET", "/teams")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(team_list_response(&[
+                (
+                    "aaaaaaaa-0000-0000-0000-000000000001",
+                    "ADM",
+                    "Administration",
+                ),
+                ("aaaaaaaa-0000-0000-0000-000000000002", "NUR", "Nursing"),
+            ]))
+            .create_async()
+            .await;
+
+        let out = Output { json: false };
+        let result = show(
+            &_auth.app_context(&server.url()),
+            "aaaaaaaa-0000-0000-0000-000000000001",
+            &out,
+        )
+        .await;
+        assert!(result.is_ok());
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_show_by_abbr_plain() {
+        let _auth = TestAuthGuard::new();
+        let mut server = Server::new_async().await;
+
+        let mock = server
+            .mock("GET", "/teams")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(team_list_response(&[
+                ("uuid-1", "ADM", "Administration"),
+                ("uuid-2", "NUR", "Nursing"),
+            ]))
+            .create_async()
+            .await;
+
+        let out = Output { json: false };
+        let result = show(&_auth.app_context(&server.url()), "NUR", &out).await;
+        assert!(result.is_ok());
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_show_json_output() {
+        let _auth = TestAuthGuard::new();
+        let mut server = Server::new_async().await;
+
+        let mock = server
+            .mock("GET", "/teams")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(team_list_response(&[("uuid-1", "ADM", "Administration")]))
+            .create_async()
+            .await;
+
+        let out = Output { json: true };
+        let result = show(&_auth.app_context(&server.url()), "ADM", &out).await;
+        assert!(result.is_ok());
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_show_target_not_found() {
+        let _auth = TestAuthGuard::new();
+        let mut server = Server::new_async().await;
+
+        let mock = server
+            .mock("GET", "/teams")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(team_list_response(&[("uuid-1", "ADM", "Administration")]))
+            .create_async()
+            .await;
+
+        let out = Output { json: false };
+        let result = show(&_auth.app_context(&server.url()), "no-such-team", &out).await;
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("no team found"));
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_show_api_error() {
+        let _auth = TestAuthGuard::new();
+        let mut server = Server::new_async().await;
+
+        let mock = server
+            .mock("GET", "/teams")
+            .with_status(500)
+            .with_body("Internal Server Error")
+            .create_async()
+            .await;
+
+        let out = Output { json: false };
+        let result = show(&_auth.app_context(&server.url()), "ADM", &out).await;
         assert!(result.is_err());
         mock.assert_async().await;
     }

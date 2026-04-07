@@ -179,6 +179,12 @@ rw teams list
 
 # Output as JSON
 rw teams list --json
+
+# Show a team by UUID or abbreviation
+rw teams show <uuid-or-abbr>
+
+# Output as JSON
+rw teams show <uuid-or-abbr> --json
 ```
 
 ### Workspaces
