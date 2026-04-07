@@ -106,22 +106,6 @@ struct ClinicianAttributes {
 }
 
 #[derive(Debug, Deserialize)]
-struct RoleAttributes {
-    name: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct RoleResource {
-    id: String,
-    attributes: RoleAttributes,
-}
-
-#[derive(Debug, Deserialize)]
-struct RoleListResponse {
-    data: Vec<RoleResource>,
-}
-
-#[derive(Debug, Deserialize)]
 struct ClinicianResource {
     id: String,
     attributes: ClinicianAttributes,
@@ -678,7 +662,7 @@ async fn resolve_role(
         bail!("API returned {}: {}", status, body);
     }
 
-    let list: RoleListResponse =
+    let list: super::roles::RoleListResponse =
         serde_json::from_str(&body).context("failed to parse roles response")?;
     let target_lower = role_target.to_lowercase();
 

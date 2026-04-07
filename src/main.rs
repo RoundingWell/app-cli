@@ -14,7 +14,7 @@ use std::path::PathBuf;
 use api::resolve_api;
 use cli::{
     AuthCommands, Cli, CliniciansCommands, Commands, ConfigCommands, ConfigDefaultCommands,
-    ConfigProfileCommands, ConfigUpdatesCommands, TeamsCommands,
+    ConfigProfileCommands, ConfigUpdatesCommands, RolesCommands, TeamsCommands,
 };
 use config::{config_path, default_config_dir, load_config, resolve_profile, AppContext};
 use output::Output;
@@ -148,6 +148,14 @@ async fn run(cli: Cli, out: &Output) -> Result<()> {
             match teams_args.command {
                 TeamsCommands::List(_) => {
                     commands::teams::list(&ctx, out).await?;
+                }
+            }
+        }
+        Commands::Roles(roles_args) => {
+            let ctx = build_ctx(&config, cli.profile.as_deref(), config_dir)?;
+            match roles_args.command {
+                RolesCommands::List(_) => {
+                    commands::roles::list(&ctx, out).await?;
                 }
             }
         }

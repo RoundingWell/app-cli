@@ -1,4 +1,4 @@
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Grant a role to a clinician
 The CLI SHALL provide a `clinicians grant <role>` subcommand that grants a role to a clinician, replacing the former `clinicians assign <role>` subcommand. Role resolution SHALL use types from the `roles` module.
