@@ -116,11 +116,20 @@ pub struct RolesArgs {
 pub enum RolesCommands {
     /// List all roles.
     List(RolesListArgs),
+    /// Show a role by UUID or name.
+    Show(RolesShowArgs),
 }
 
 /// Arguments for `roles list`.
 #[derive(Args, Debug)]
 pub struct RolesListArgs {}
+
+/// Arguments for `roles show`.
+#[derive(Args, Debug)]
+pub struct RolesShowArgs {
+    /// Role UUID or name.
+    pub target: String,
+}
 
 /// Arguments for the `teams` subcommand.
 #[derive(Args, Debug)]

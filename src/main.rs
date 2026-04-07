@@ -157,6 +157,9 @@ async fn run(cli: Cli, out: &Output) -> Result<()> {
                 RolesCommands::List(_) => {
                     commands::roles::list(&ctx, out).await?;
                 }
+                RolesCommands::Show(args) => {
+                    commands::roles::show(&ctx, &args.target, out).await?;
+                }
             }
         }
         Commands::Api(api_args) => {

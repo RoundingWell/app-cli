@@ -120,6 +120,12 @@ rw roles list
 
 # Output as JSON
 rw roles list --json
+
+# Show a role by UUID or name (includes id, name, label, description, permissions)
+rw roles show <uuid-or-name>
+
+# Output as JSON
+rw roles show <uuid-or-name> --json
 ```
 
 ### Clinicians
