@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-04-07
+
+### Added
+
+- `rw teams list` — list all teams
+- `rw teams show` — show a team by UUID
+- `rw roles list` — list all roles
+- `rw roles show` — show a role by UUID
+- `rw workspaces list` — list all workspaces
+- `rw workspaces show` — show a workspace by UUID
+- `rw config` supports default config values
+
 ## [0.7.0] - 2026-04-05
 
 ### Changed
@@ -88,7 +100,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Initial release of the `rw` CLI tool
 
-[Unreleased]: https://github.com/RoundingWell/app-cli/compare/0.7.0...HEAD
+[Unreleased]: https://github.com/RoundingWell/app-cli/compare/0.8.0...HEAD
+[0.8.0]: https://github.com/RoundingWell/app-cli/compare/0.7.0...0.8.0
 [0.7.0]: https://github.com/RoundingWell/app-cli/compare/0.6.0...0.7.0
 [0.6.0]: https://github.com/RoundingWell/app-cli/compare/0.5.0...0.6.0
 [0.5.0]: https://github.com/RoundingWell/app-cli/compare/0.4.1...0.5.0
