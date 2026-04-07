@@ -131,6 +131,9 @@ async fn run(cli: Cli, out: &Output) -> Result<()> {
                     )
                     .await?;
                 }
+                CliniciansCommands::Show(args) => {
+                    commands::clinicians::show(&ctx, &args.target, out).await?;
+                }
                 CliniciansCommands::Update(args) => {
                     commands::clinicians::update(
                         &ctx,
