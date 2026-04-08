@@ -88,6 +88,8 @@ pub struct Cli {
 /// Top-level subcommands.
 #[derive(Subcommand, Debug)]
 pub enum Commands {
+    /// List artifacts.
+    Artifacts(ArtifactsArgs),
     /// Authenticate with RoundingWell.
     Auth(AuthArgs),
     /// Make an API request.
@@ -435,6 +437,33 @@ pub struct CliniciansRegisterArgs {
     /// Team UUID or abbreviation.
     #[arg(long)]
     pub team: Option<String>,
+}
+
+/// Arguments for the `artifacts` subcommand.
+#[derive(Args, Debug)]
+pub struct ArtifactsArgs {
+    #[command(subcommand)]
+    pub command: ArtifactsCommands,
+}
+
+/// Subcommands for `artifacts`.
+#[derive(Subcommand, Debug)]
+pub enum ArtifactsCommands {
+    /// List artifacts by type, path, and term.
+    List(ArtifactsListArgs),
+}
+
+/// Arguments for `artifacts list`.
+#[derive(Args, Debug)]
+pub struct ArtifactsListArgs {
+    /// Artifact type.
+    pub r#type: String,
+    /// Artifact path.
+    #[arg(long)]
+    pub path: String,
+    /// Search term.
+    #[arg(long)]
+    pub term: String,
 }
 
 /// Arguments for the `auth` subcommand.
