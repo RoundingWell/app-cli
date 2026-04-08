@@ -92,6 +92,8 @@ pub enum Commands {
     Auth(AuthArgs),
     /// Make an API request.
     Api(ApiArgs),
+    /// List artifacts.
+    Artifacts(ArtifactsArgs),
     /// Manage clinicians.
     Clinicians(CliniciansArgs),
     /// Manage teams.
@@ -104,6 +106,33 @@ pub enum Commands {
     Update,
     /// Manage CLI configuration, profiles, and update settings.
     Config(ConfigArgs),
+}
+
+/// Arguments for the `artifacts` subcommand.
+#[derive(Args, Debug)]
+pub struct ArtifactsArgs {
+    #[command(subcommand)]
+    pub command: ArtifactsCommands,
+}
+
+/// Subcommands for `artifacts`.
+#[derive(Subcommand, Debug)]
+pub enum ArtifactsCommands {
+    /// List artifacts filtered by type, path, and term.
+    List(ArtifactsListArgs),
+}
+
+/// Arguments for `artifacts list`.
+#[derive(Args, Debug)]
+pub struct ArtifactsListArgs {
+    /// Artifact type to filter by.
+    pub artifact_type: String,
+    /// Path filter.
+    #[arg(long, required = true)]
+    pub path: String,
+    /// Search term filter.
+    #[arg(long, required = true)]
+    pub term: String,
 }
 
 /// Arguments for the `workspaces` subcommand.

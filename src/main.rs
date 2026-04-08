@@ -13,8 +13,9 @@ use std::path::PathBuf;
 
 use api::resolve_api;
 use cli::{
-    AuthCommands, Cli, CliniciansCommands, Commands, ConfigCommands, ConfigDefaultCommands,
-    ConfigProfileCommands, ConfigUpdatesCommands, RolesCommands, TeamsCommands, WorkspacesCommands,
+    ArtifactsCommands, AuthCommands, Cli, CliniciansCommands, Commands, ConfigCommands,
+    ConfigDefaultCommands, ConfigProfileCommands, ConfigUpdatesCommands, RolesCommands,
+    TeamsCommands, WorkspacesCommands,
 };
 use config::{config_path, default_config_dir, load_config, resolve_profile, AppContext};
 use output::Output;
@@ -85,6 +86,21 @@ async fn run(cli: Cli, out: &Output) -> Result<()> {
     }
 
     match cli.command {
+        Commands::Artifacts(artifacts_args) => {
+            let ctx = build_ctx(&config, cli.profile.as_deref(), config_dir)?;
+            match artifacts_args.command {
+                ArtifactsCommands::List(args) => {
+                    commands::artifacts::list(
+                        &ctx,
+                        &args.artifact_type,
+                        &args.path,
+                        &args.term,
+                        out,
+                    )
+                    .await?;
+                }
+            }
+        }
         Commands::Auth(auth_args) => {
             let ctx = build_ctx(&config, cli.profile.as_deref(), config_dir)?;
             match auth_args.command {

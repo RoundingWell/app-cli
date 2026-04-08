@@ -118,6 +118,16 @@ rw auth login --profile mercy
 
 ## Tools
 
+### Artifacts
+
+```sh
+# List artifacts filtered by type, path, and search term
+rw artifacts list <type> --path=<path> --term=<term>
+
+# Output as JSON
+rw artifacts list <type> --path=<path> --term=<term> --json
+```
+
 ### Clinicians
 
 ```sh
