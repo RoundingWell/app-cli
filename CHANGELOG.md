@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-04-08
+
+### Added
+
+- `rw skills install` — install an agent skill from a URL or local path
+- `rw artifacts list` — list all artifacts
+- `rw clinicians show` — show a clinician by UUID or email
+
 ## [0.8.0] - 2026-04-07
 
 ### Added
@@ -100,7 +108,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Initial release of the `rw` CLI tool
 
-[Unreleased]: https://github.com/RoundingWell/app-cli/compare/0.8.0...HEAD
+[Unreleased]: https://github.com/RoundingWell/app-cli/compare/0.9.0...HEAD
+[0.9.0]: https://github.com/RoundingWell/app-cli/compare/0.8.0...0.9.0
 [0.8.0]: https://github.com/RoundingWell/app-cli/compare/0.7.0...0.8.0
 [0.7.0]: https://github.com/RoundingWell/app-cli/compare/0.6.0...0.7.0
 [0.6.0]: https://github.com/RoundingWell/app-cli/compare/0.5.0...0.6.0
