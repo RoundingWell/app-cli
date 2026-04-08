@@ -96,3 +96,4 @@ When bumping version, update:
 1. **Cargo.toml** - `version = "X.Y.Z"`
 2. **CHANGELOG.md** - Add `## [X.Y.Z] - YYYY-MM-DD` section
 3. **Version links** - Update comparison URLs at bottom of CHANGELOG.md
+4. **Unreleased link** - Update the `Unreleased` comparison URL at the bottom of CHANGELOG.md
