@@ -121,11 +121,11 @@ rw auth login --profile mercy
 ### Artifacts
 
 ```sh
-# List artifacts by type, path, and term
-rw artifacts list <type> --path=<path> --term=<term>
+# List artifacts by type, dot-path, and term
+rw artifacts list <type> --path=<dot-path> --term=<term>
 
 # Output as JSON
-rw artifacts list <type> --path=<path> --term=<term> --json
+rw artifacts list <type> --path=<dot-path> --term=<term> --json
 ```
 
 ### Clinicians
