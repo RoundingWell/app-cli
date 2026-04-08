@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use serde_json::Map;
 
 use crate::config::AppContext;
 use crate::output::{CommandOutput, Output};
@@ -11,7 +12,7 @@ use crate::output::{CommandOutput, Output};
 pub(crate) struct ArtifactAttributes {
     pub(crate) artifact: String,
     pub(crate) identifier: String,
-    pub(crate) values: Vec<String>,
+    pub(crate) values: Map<String, serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -26,11 +27,32 @@ pub(crate) struct ArtifactListResponse {
 
 // --- Output types ---
 
-#[derive(Debug, tabled::Tabled, Serialize)]
+#[derive(Debug, Serialize)]
 pub struct ArtifactRow {
     pub artifact: String,
     pub identifier: String,
-    pub values: String,
+    pub values: Map<String, serde_json::Value>,
+}
+
+#[derive(Debug, tabled::Tabled)]
+struct ArtifactTableRow {
+    artifact: String,
+    identifier: String,
+    values: String,
+}
+
+fn format_values(values: &Map<String, serde_json::Value>) -> String {
+    values
+        .iter()
+        .map(|(k, v)| {
+            let val = match v {
+                serde_json::Value::String(s) => s.clone(),
+                other => other.to_string(),
+            };
+            format!("{k}: {val}")
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 #[derive(Debug, Serialize)]
@@ -43,9 +65,16 @@ impl CommandOutput for ArtifactListOutput {
     fn plain(&self) -> String {
         use tabled::settings::Style;
         use tabled::Table;
-        Table::new(&self.artifacts)
-            .with(Style::markdown())
-            .to_string()
+        let rows: Vec<ArtifactTableRow> = self
+            .artifacts
+            .iter()
+            .map(|a| ArtifactTableRow {
+                artifact: a.artifact.clone(),
+                identifier: a.identifier.clone(),
+                values: format_values(&a.values),
+            })
+            .collect();
+        Table::new(&rows).with(Style::markdown()).to_string()
     }
 }
 
@@ -90,7 +119,7 @@ pub async fn list(
         .map(|a| ArtifactRow {
             artifact: a.attributes.artifact,
             identifier: a.attributes.identifier,
-            values: a.attributes.values.join(", "),
+            values: a.attributes.values,
         })
         .collect();
 
@@ -133,13 +162,13 @@ mod tests {
         }
     }
 
-    fn artifact_list_response(artifacts: &[(&str, &str, &[&str])]) -> String {
+    fn artifact_list_response(artifacts: &[(&str, &str, &str, serde_json::Value)]) -> String {
         let data: Vec<serde_json::Value> = artifacts
             .iter()
-            .map(|(artifact, identifier, values)| {
+            .map(|(id, artifact, identifier, values)| {
                 serde_json::json!({
                     "type": "artifacts",
-                    "id": format!("artifact-{}", identifier),
+                    "id": id,
                     "attributes": {
                         "artifact": artifact,
                         "identifier": identifier,
@@ -166,8 +195,18 @@ mod tests {
             .with_status(200)
             .with_header("content-type", "application/json")
             .with_body(artifact_list_response(&[
-                ("ICD-10", "E11", &["Type 2 diabetes mellitus"]),
-                ("ICD-10", "E10", &["Type 1 diabetes mellitus"]),
+                (
+                    "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                    "ICD-10",
+                    "E11",
+                    serde_json::json!({"description": "Type 2 diabetes mellitus"}),
+                ),
+                (
+                    "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+                    "ICD-10",
+                    "E10",
+                    serde_json::json!({"description": "Type 1 diabetes mellitus"}),
+                ),
             ]))
             .create_async()
             .await;
@@ -224,9 +263,10 @@ mod tests {
             .with_status(200)
             .with_header("content-type", "application/json")
             .with_body(artifact_list_response(&[(
+                "c3d4e5f6-a7b8-9012-cdef-123456789012",
                 "ICD-10",
                 "E11.9",
-                &["Type 2 diabetes", "unspecified"],
+                serde_json::json!({"description": "Type 2 diabetes", "qualifier": "unspecified"}),
             )]))
             .create_async()
             .await;
@@ -271,9 +311,10 @@ mod tests {
             .with_status(200)
             .with_header("content-type", "application/json")
             .with_body(artifact_list_response(&[(
+                "d4e5f6a7-b8c9-0123-defa-234567890123",
                 "ICD-10",
                 "E11",
-                &["Type 2 diabetes mellitus"],
+                serde_json::json!({"description": "Type 2 diabetes mellitus"}),
             )]))
             .create_async()
             .await;

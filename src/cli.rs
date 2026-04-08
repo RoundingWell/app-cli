@@ -458,7 +458,7 @@ pub enum ArtifactsCommands {
 pub struct ArtifactsListArgs {
     /// Artifact type.
     pub r#type: String,
-    /// Artifact path.
+    /// Artifact dot-path.
     #[arg(long)]
     pub path: String,
     /// Search term.
