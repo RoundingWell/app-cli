@@ -15,7 +15,7 @@ use api::resolve_api;
 use cli::{
     ArtifactsCommands, AuthCommands, Cli, CliniciansCommands, Commands, ConfigCommands,
     ConfigDefaultCommands, ConfigProfileCommands, ConfigUpdatesCommands, RolesCommands,
-    TeamsCommands, WorkspacesCommands,
+    SkillsCommands, TeamsCommands, WorkspacesCommands,
 };
 use config::{config_path, default_config_dir, load_config, resolve_profile, AppContext};
 use output::Output;
@@ -79,9 +79,12 @@ async fn run(cli: Cli, out: &Output) -> Result<()> {
 
     // Run version check and auto-update before the command, except when the
     // user is explicitly running `rw update` (to avoid a redundant double-check),
-    // or when the user is explicitly running `rw config` (they may be disabling
-    // auto updates).
-    if !matches!(cli.command, Commands::Update | Commands::Config(_)) {
+    // `rw config` (they may be disabling auto updates), or `rw skills` (purely
+    // local file-write with no API interaction).
+    if !matches!(
+        cli.command,
+        Commands::Update | Commands::Config(_) | Commands::Skills(_)
+    ) {
         version_check::check_and_update(&config_dir, &mut config, &cfg_path, out).await;
     }
 
@@ -273,6 +276,11 @@ async fn run(cli: Cli, out: &Output) -> Result<()> {
                     commands::config::default_list(cli.profile.as_deref(), &config, out)?;
                 }
             },
+        },
+        Commands::Skills(skills_args) => match skills_args.command {
+            SkillsCommands::Install(args) => {
+                commands::skills::run_install(args.local, args.no_clobber, out)?;
+            }
         },
     }
 

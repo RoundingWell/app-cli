@@ -22,6 +22,7 @@ cargo fmt               # Format
 - Always mock network boundaries in tests
 - Run `cargo clippy` and `cargo fmt` after changes
 - Run `cargo test` before `cargo build`
+- When adding, removing, or modifying any `rw` command or flag, update `skills/rw-skill.md` to keep the embedded agent skill current (ignore: auth, api, update, config)
 
 ## Important Notes 
 

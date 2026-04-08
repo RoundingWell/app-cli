@@ -254,6 +254,21 @@ Stage-to-domain mapping:
 | `dev`     | `https://{organization}.roundingwell.dev`         |
 | `local`   | `http://localhost:8080`                           |
 
+## Agent Skills
+
+Install a skill that teaches Claude Code how to use `rw`:
+
+```sh
+rw skills install               # Install to ~/.claude/skills/rw/SKILL.md (global)
+rw skills install --local       # Install to .claude/skills/rw/SKILL.md in the current directory
+rw skills install --no-clobber  # Skip if the skill file already exists
+```
+
+| Flag           | Description                                       |
+|----------------|---------------------------------------------------|
+| `--local`      | Write to `.claude/` instead of global `~/.claude` |
+| `--no-clobber` | Do not overwrite an existing skill file           |
+
 ## Updates
 
 ```sh
