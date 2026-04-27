@@ -21,11 +21,12 @@ triggers:
 
 These flags work on every command:
 
-| Flag           | Short | Description                        |
-|----------------|-------|------------------------------------|
-| `--profile`    | `-p`  | Named profile to use               |
-| `--config-dir` | `-c`  | Configuration directory path       |
-| `--json`       |       | Output results as JSON             |
+| Flag           | Short | Description                                                            |
+|----------------|-------|------------------------------------------------------------------------|
+| `--profile`    | `-p`  | Named profile to use                                                   |
+| `--auth`       | `-A`  | Use credentials from another profile (overrides only the auth source)  |
+| `--config-dir` | `-c`  | Configuration directory path                                           |
+| `--json`       |       | Output results as JSON                                                 |
 
 All commands that call the API require a configured profile. Ensure that a profile has been set using `rw config profile show` or pass `--profile` on each invocation.
 

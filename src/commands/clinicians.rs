@@ -1029,7 +1029,9 @@ mod tests {
             AppContext {
                 config_dir: self.dir.path().to_path_buf(),
                 profile: "test".to_string(),
+                auth_profile: "test".to_string(),
                 stage: Stage::Dev,
+                auth_stage: Stage::Dev,
                 base_url: base_url.to_string(),
                 defaults: BTreeMap::new(),
             }
@@ -1044,7 +1046,9 @@ mod tests {
             AppContext {
                 config_dir: self.dir.path().to_path_buf(),
                 profile: "test".to_string(),
+                auth_profile: "test".to_string(),
                 stage: Stage::Dev,
+                auth_stage: Stage::Dev,
                 base_url: base_url.to_string(),
                 defaults,
             }
