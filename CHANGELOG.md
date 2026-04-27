@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-04-27
+
+### Added
+
+- Global `-A`/`--auth=<name>` flag to override the credential-source profile for a single invocation; `--profile` continues to control organization, stage, base URL, and defaults
+
 ## [0.9.0] - 2026-04-08
 
 ### Added
@@ -108,7 +114,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Initial release of the `rw` CLI tool
 
-[Unreleased]: https://github.com/RoundingWell/app-cli/compare/0.9.0...HEAD
+[Unreleased]: https://github.com/RoundingWell/app-cli/compare/0.10.0...HEAD
+[0.10.0]: https://github.com/RoundingWell/app-cli/compare/0.9.0...0.10.0
 [0.9.0]: https://github.com/RoundingWell/app-cli/compare/0.8.0...0.9.0
 [0.8.0]: https://github.com/RoundingWell/app-cli/compare/0.7.0...0.8.0
 [0.7.0]: https://github.com/RoundingWell/app-cli/compare/0.6.0...0.7.0
