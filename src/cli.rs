@@ -73,6 +73,10 @@ pub struct Cli {
     #[arg(short = 'p', long, value_parser = validate_slug, global = true)]
     pub profile: Option<String>,
 
+    /// Profile whose stored credentials should be used for this invocation.
+    #[arg(short = 'A', long, value_parser = validate_slug, global = true)]
+    pub auth: Option<String>,
+
     /// Output results as JSON.
     #[arg(long, global = true)]
     pub json: bool,
@@ -561,5 +565,42 @@ mod tests {
         assert!(validate_slug("-clinic").is_err()); // starts with hyphen
         assert!(validate_slug("mercy-").is_err()); // ends with hyphen
         assert!(validate_slug("mercy_clinic").is_err()); // underscore not allowed
+    }
+
+    #[test]
+    fn test_auth_flag_long() {
+        use clap::Parser;
+        let cli = Cli::try_parse_from(["rw", "--auth", "mercy", "auth", "status"]).unwrap();
+        assert_eq!(cli.auth.as_deref(), Some("mercy"));
+    }
+
+    #[test]
+    fn test_auth_flag_short() {
+        use clap::Parser;
+        let cli = Cli::try_parse_from(["rw", "-A", "mercy", "auth", "status"]).unwrap();
+        assert_eq!(cli.auth.as_deref(), Some("mercy"));
+    }
+
+    #[test]
+    fn test_auth_flag_default_none() {
+        use clap::Parser;
+        let cli = Cli::try_parse_from(["rw", "auth", "status"]).unwrap();
+        assert!(cli.auth.is_none());
+    }
+
+    #[test]
+    fn test_auth_flag_validates_slug() {
+        use clap::Parser;
+        // Uppercase letter should fail slug validation.
+        let err = Cli::try_parse_from(["rw", "-A", "Mercy", "auth", "status"]).unwrap_err();
+        assert!(err.to_string().contains("not a valid slug"));
+    }
+
+    #[test]
+    fn test_auth_flag_propagates_to_subcommands() {
+        use clap::Parser;
+        // The flag is global, so it works after the subcommand too.
+        let cli = Cli::try_parse_from(["rw", "auth", "status", "-A", "mercy"]).unwrap();
+        assert_eq!(cli.auth.as_deref(), Some("mercy"));
     }
 }

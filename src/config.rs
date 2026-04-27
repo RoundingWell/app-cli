@@ -9,7 +9,14 @@ use crate::cli::Stage;
 pub struct AppContext {
     pub config_dir: PathBuf,
     pub profile: String,
+    /// Profile whose credentials should be used. Defaults to `profile` unless
+    /// overridden by `--auth`.
+    pub auth_profile: String,
     pub stage: Stage,
+    /// Stage of the auth profile. Equals `stage` unless `--auth` selects a
+    /// profile on a different stage; used to pick the correct WorkOS endpoint
+    /// when refreshing the borrowed profile's token.
+    pub auth_stage: Stage,
     pub base_url: String,
     pub defaults: BTreeMap<String, String>,
 }
@@ -110,6 +117,21 @@ pub fn resolve_profile(config: &Config, profile: Option<&str>) -> Result<(String
         anyhow::bail!(
             "no profile selected; run `rw config profile use <name>` to set a default, or pass --profile"
         )
+    }
+}
+
+/// Resolves the profile whose stored credentials should be used for the
+/// invocation. Returns `auth.unwrap_or(profile)` after verifying the override
+/// (when present) names a known profile in `config`.
+pub fn resolve_auth_profile(config: &Config, profile: &str, auth: Option<&str>) -> Result<String> {
+    match auth {
+        None => Ok(profile.to_string()),
+        Some(name) => {
+            if !config.profiles.contains_key(name) {
+                anyhow::bail!("profile \"{}\" not found in config", name);
+            }
+            Ok(name.to_string())
+        }
     }
 }
 
@@ -255,5 +277,74 @@ mod tests {
                 .map(String::as_str),
             Some("ICU")
         );
+    }
+
+    #[test]
+    fn test_resolve_auth_profile_none_returns_active() {
+        let mut config = Config::default();
+        config.profiles.insert(
+            "demo".to_string(),
+            Profile {
+                organization: "demonstration".to_string(),
+                stage: Stage::Prod,
+                default: None,
+            },
+        );
+        let result = resolve_auth_profile(&config, "demo", None).unwrap();
+        assert_eq!(result, "demo");
+    }
+
+    #[test]
+    fn test_resolve_auth_profile_some_returns_override() {
+        let mut config = Config::default();
+        config.profiles.insert(
+            "demo".to_string(),
+            Profile {
+                organization: "demonstration".to_string(),
+                stage: Stage::Prod,
+                default: None,
+            },
+        );
+        config.profiles.insert(
+            "mercy".to_string(),
+            Profile {
+                organization: "mercy".to_string(),
+                stage: Stage::Sandbox,
+                default: None,
+            },
+        );
+        let result = resolve_auth_profile(&config, "demo", Some("mercy")).unwrap();
+        assert_eq!(result, "mercy");
+    }
+
+    #[test]
+    fn test_resolve_auth_profile_unknown_errors() {
+        let mut config = Config::default();
+        config.profiles.insert(
+            "demo".to_string(),
+            Profile {
+                organization: "demonstration".to_string(),
+                stage: Stage::Prod,
+                default: None,
+            },
+        );
+        let err = resolve_auth_profile(&config, "demo", Some("nope")).unwrap_err();
+        assert!(err.to_string().contains("\"nope\""));
+        assert!(err.to_string().contains("not found"));
+    }
+
+    #[test]
+    fn test_resolve_auth_profile_same_as_active_is_silent_noop() {
+        let mut config = Config::default();
+        config.profiles.insert(
+            "demo".to_string(),
+            Profile {
+                organization: "demonstration".to_string(),
+                stage: Stage::Prod,
+                default: None,
+            },
+        );
+        let result = resolve_auth_profile(&config, "demo", Some("demo")).unwrap();
+        assert_eq!(result, "demo");
     }
 }

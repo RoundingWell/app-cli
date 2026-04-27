@@ -34,9 +34,16 @@ async fn main() {
 fn build_ctx(
     config: &config::Config,
     profile: Option<&str>,
+    auth: Option<&str>,
     config_dir: PathBuf,
 ) -> Result<AppContext> {
     let (profile, organization, stage) = resolve_profile(config, profile)?;
+    let auth_profile = config::resolve_auth_profile(config, &profile, auth)?;
+    let auth_stage = config
+        .profiles
+        .get(&auth_profile)
+        .map(|p| p.stage.clone())
+        .unwrap_or_else(|| stage.clone());
     let base_url = resolve_api(&organization, &stage);
     let defaults = config
         .profiles
@@ -46,10 +53,34 @@ fn build_ctx(
     Ok(AppContext {
         config_dir,
         profile,
+        auth_profile,
         stage,
+        auth_stage,
         base_url,
         defaults,
     })
+}
+
+/// Returns an error when `--auth` is set but the command is `auth login` or
+/// `auth logout`, where overriding the credential source is contradictory
+/// (login *creates* credentials, logout *removes* them — both for a specific
+/// profile, not borrowed from elsewhere).
+fn check_auth_compatible(cmd: &Commands, auth: Option<&str>) -> Result<()> {
+    if auth.is_none() {
+        return Ok(());
+    }
+    if let Commands::Auth(args) = cmd {
+        match args.command {
+            cli::AuthCommands::Login => {
+                anyhow::bail!("--auth cannot be used with `rw auth login`");
+            }
+            cli::AuthCommands::Logout => {
+                anyhow::bail!("--auth cannot be used with `rw auth logout`");
+            }
+            cli::AuthCommands::Status | cli::AuthCommands::Header => {}
+        }
+    }
+    Ok(())
 }
 
 async fn run(cli: Cli, out: &Output) -> Result<()> {
@@ -88,9 +119,16 @@ async fn run(cli: Cli, out: &Output) -> Result<()> {
         version_check::check_and_update(&config_dir, &mut config, &cfg_path, out).await;
     }
 
+    check_auth_compatible(&cli.command, cli.auth.as_deref())?;
+
     match cli.command {
         Commands::Artifacts(artifacts_args) => {
-            let ctx = build_ctx(&config, cli.profile.as_deref(), config_dir)?;
+            let ctx = build_ctx(
+                &config,
+                cli.profile.as_deref(),
+                cli.auth.as_deref(),
+                config_dir,
+            )?;
             match artifacts_args.command {
                 ArtifactsCommands::List(args) => {
                     commands::artifacts::list(
@@ -105,7 +143,12 @@ async fn run(cli: Cli, out: &Output) -> Result<()> {
             }
         }
         Commands::Auth(auth_args) => {
-            let ctx = build_ctx(&config, cli.profile.as_deref(), config_dir)?;
+            let ctx = build_ctx(
+                &config,
+                cli.profile.as_deref(),
+                cli.auth.as_deref(),
+                config_dir,
+            )?;
             match auth_args.command {
                 AuthCommands::Login => {
                     commands::auth::login(&ctx, out).await?;
@@ -122,7 +165,12 @@ async fn run(cli: Cli, out: &Output) -> Result<()> {
             }
         }
         Commands::Clinicians(clinician_args) => {
-            let ctx = build_ctx(&config, cli.profile.as_deref(), config_dir)?;
+            let ctx = build_ctx(
+                &config,
+                cli.profile.as_deref(),
+                cli.auth.as_deref(),
+                config_dir,
+            )?;
             match clinician_args.command {
                 CliniciansCommands::Assign(args) => {
                     commands::clinicians::assign(&ctx, &args.target, &args.team, out).await?;
@@ -166,7 +214,12 @@ async fn run(cli: Cli, out: &Output) -> Result<()> {
             }
         }
         Commands::Teams(teams_args) => {
-            let ctx = build_ctx(&config, cli.profile.as_deref(), config_dir)?;
+            let ctx = build_ctx(
+                &config,
+                cli.profile.as_deref(),
+                cli.auth.as_deref(),
+                config_dir,
+            )?;
             match teams_args.command {
                 TeamsCommands::List(_) => {
                     commands::teams::list(&ctx, out).await?;
@@ -177,7 +230,12 @@ async fn run(cli: Cli, out: &Output) -> Result<()> {
             }
         }
         Commands::Roles(roles_args) => {
-            let ctx = build_ctx(&config, cli.profile.as_deref(), config_dir)?;
+            let ctx = build_ctx(
+                &config,
+                cli.profile.as_deref(),
+                cli.auth.as_deref(),
+                config_dir,
+            )?;
             match roles_args.command {
                 RolesCommands::List(_) => {
                     commands::roles::list(&ctx, out).await?;
@@ -188,7 +246,12 @@ async fn run(cli: Cli, out: &Output) -> Result<()> {
             }
         }
         Commands::Workspaces(workspaces_args) => {
-            let ctx = build_ctx(&config, cli.profile.as_deref(), config_dir)?;
+            let ctx = build_ctx(
+                &config,
+                cli.profile.as_deref(),
+                cli.auth.as_deref(),
+                config_dir,
+            )?;
             match workspaces_args.command {
                 WorkspacesCommands::List(_) => {
                     commands::workspaces::list(&ctx, out).await?;
@@ -199,7 +262,12 @@ async fn run(cli: Cli, out: &Output) -> Result<()> {
             }
         }
         Commands::Api(api_args) => {
-            let ctx = build_ctx(&config, cli.profile.as_deref(), config_dir)?;
+            let ctx = build_ctx(
+                &config,
+                cli.profile.as_deref(),
+                cli.auth.as_deref(),
+                config_dir,
+            )?;
             commands::api::run(
                 &ctx,
                 &api_args.endpoint,
@@ -285,4 +353,112 @@ async fn run(cli: Cli, out: &Output) -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cli::AuthArgs;
+
+    fn login_cmd() -> Commands {
+        Commands::Auth(AuthArgs {
+            command: AuthCommands::Login,
+        })
+    }
+
+    fn logout_cmd() -> Commands {
+        Commands::Auth(AuthArgs {
+            command: AuthCommands::Logout,
+        })
+    }
+
+    fn status_cmd() -> Commands {
+        Commands::Auth(AuthArgs {
+            command: AuthCommands::Status,
+        })
+    }
+
+    #[test]
+    fn test_check_auth_compatible_allows_login_without_override() {
+        assert!(check_auth_compatible(&login_cmd(), None).is_ok());
+    }
+
+    #[test]
+    fn test_check_auth_compatible_rejects_login_with_override() {
+        let err = check_auth_compatible(&login_cmd(), Some("mercy")).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("--auth"));
+        assert!(msg.contains("auth login"));
+    }
+
+    #[test]
+    fn test_check_auth_compatible_rejects_logout_with_override() {
+        let err = check_auth_compatible(&logout_cmd(), Some("mercy")).unwrap_err();
+        assert!(err.to_string().contains("auth logout"));
+    }
+
+    #[test]
+    fn test_check_auth_compatible_allows_status_with_override() {
+        assert!(check_auth_compatible(&status_cmd(), Some("mercy")).is_ok());
+    }
+
+    #[test]
+    fn test_check_auth_compatible_allows_other_commands_with_override() {
+        let cmd = Commands::Update;
+        assert!(check_auth_compatible(&cmd, Some("mercy")).is_ok());
+    }
+
+    #[test]
+    fn test_build_ctx_auth_stage_matches_active_stage_without_override() {
+        use cli::Stage;
+        use config::{Config, Profile};
+
+        let mut config = Config::default();
+        config.profiles.insert(
+            "demo".to_string(),
+            Profile {
+                organization: "demonstration".to_string(),
+                stage: Stage::Dev,
+                default: None,
+            },
+        );
+
+        let ctx = build_ctx(&config, Some("demo"), None, PathBuf::from("/tmp")).unwrap();
+        assert_eq!(ctx.stage, Stage::Dev);
+        assert_eq!(ctx.auth_stage, Stage::Dev);
+    }
+
+    #[test]
+    fn test_build_ctx_auth_stage_uses_override_profile_stage() {
+        use cli::Stage;
+        use config::{Config, Profile};
+
+        let mut config = Config::default();
+        config.profiles.insert(
+            "demo".to_string(),
+            Profile {
+                organization: "demonstration".to_string(),
+                stage: Stage::Dev,
+                default: None,
+            },
+        );
+        config.profiles.insert(
+            "service".to_string(),
+            Profile {
+                organization: "service".to_string(),
+                stage: Stage::Prod,
+                default: None,
+            },
+        );
+
+        let ctx = build_ctx(
+            &config,
+            Some("demo"),
+            Some("service"),
+            PathBuf::from("/tmp"),
+        )
+        .unwrap();
+        assert_eq!(ctx.stage, Stage::Dev);
+        assert_eq!(ctx.auth_stage, Stage::Prod);
+    }
 }

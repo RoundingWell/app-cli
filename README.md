@@ -24,11 +24,12 @@ RW_VERSION=1.2.3 bash -c "$(curl -fsSL https://raw.githubusercontent.com/Roundin
 
 ## Usage
 
-| Flag           | Short | Description               |
-|----------------|-------|---------------------------|
-| `--profile`    | `-p`  | Named profile to use      |
-| `--config-dir` | `-c`  | Configuration directory   |
-| `--json`       |       | Change all output to JSON |
+| Flag           | Short | Description                                                            |
+|----------------|-------|------------------------------------------------------------------------|
+| `--profile`    | `-p`  | Named profile to use                                                   |
+| `--auth`       | `-A`  | Use stored credentials from another profile (overrides only the auth) |
+| `--config-dir` | `-c`  | Configuration directory                                                |
+| `--json`       |       | Change all output to JSON                                              |
 
 All commands require a profile. Set a default with `rw config profile use <name>`, or pass `--profile` on each invocation.
 See [Adding a profile](#adding-a-profile) to add a profile.
@@ -115,6 +116,28 @@ rw auth logout      # Remove stored credentials for current profile
 # Use a named profile
 rw auth login --profile mercy
 ```
+
+#### Auth override
+
+Use `--auth` (`-A`) to borrow stored credentials from another profile without
+changing the active profile's organization, stage, or defaults. This is
+useful when you have multiple identities for the same environment (for
+example, a personal account plus a service account).
+
+```sh
+# Run a request against the active profile's environment, but as the
+# user whose credentials are saved under "service".
+rw clinicians show me --auth service
+
+# Combine with --profile: target profile A's environment, send with
+# profile B's credentials.
+rw api ping --profile demo --auth service
+```
+
+`--auth` is rejected on `rw auth login` and `rw auth logout` (those
+commands inherently target a specific profile). It is permitted on
+`rw auth status` and `rw auth header`, where it reports on the override
+profile's credentials.
 
 ## Tools
 

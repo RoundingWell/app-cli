@@ -252,14 +252,14 @@ pub async fn login(ctx: &AppContext, out: &Output) -> Result<()> {
 
 /// Run `rw auth status` – report whether stored credentials exist.
 pub fn status(ctx: &AppContext, out: &Output) -> Result<()> {
-    match load_auth_cache(&ctx.config_dir, &ctx.profile)? {
+    match load_auth_cache(&ctx.config_dir, &ctx.auth_profile)? {
         Some(ref cache @ AuthCache::Bearer { .. }) => {
             out.print(&StatusOutput {
                 auth_type: Some("bearer".to_string()),
                 authenticated: true,
                 expired: cache.is_expired(),
                 username: None,
-                profile: ctx.profile.clone(),
+                profile: ctx.auth_profile.clone(),
             });
         }
         Some(AuthCache::Basic { ref username, .. }) => {
@@ -268,7 +268,7 @@ pub fn status(ctx: &AppContext, out: &Output) -> Result<()> {
                 authenticated: true,
                 expired: false,
                 username: Some(username.clone()),
-                profile: ctx.profile.clone(),
+                profile: ctx.auth_profile.clone(),
             });
         }
         None => {
@@ -277,7 +277,7 @@ pub fn status(ctx: &AppContext, out: &Output) -> Result<()> {
                 authenticated: false,
                 expired: false,
                 username: None,
-                profile: ctx.profile.clone(),
+                profile: ctx.auth_profile.clone(),
             });
         }
     }
@@ -337,7 +337,7 @@ pub enum ResolvedAuth {
 /// For bearer tokens, automatically refreshes if expired.
 /// Returns `None` if no credentials are stored.
 pub async fn resolve_auth(ctx: &AppContext) -> Result<Option<ResolvedAuth>> {
-    let Some(cache) = load_auth_cache(&ctx.config_dir, &ctx.profile)? else {
+    let Some(cache) = load_auth_cache(&ctx.config_dir, &ctx.auth_profile)? else {
         return Ok(None);
     };
 
@@ -361,11 +361,11 @@ pub async fn resolve_auth(ctx: &AppContext) -> Result<Option<ResolvedAuth>> {
                 _ => bail!("authentication token expired; run `rw auth login` to re-authenticate"),
             };
 
-            let new_cache = try_refresh(&ctx.stage, &refresh_token)
+            let new_cache = try_refresh(&ctx.auth_stage, &refresh_token)
                 .await
                 .context("token refresh failed; run `rw auth login` to re-authenticate")?;
 
-            save_auth_cache(&ctx.config_dir, &ctx.profile, &new_cache)?;
+            save_auth_cache(&ctx.config_dir, &ctx.auth_profile, &new_cache)?;
 
             match new_cache {
                 AuthCache::Bearer { access_token, .. } => {
@@ -572,5 +572,177 @@ mod tests {
             header: "Bearer mytoken".to_string(),
         };
         assert_eq!(output.plain(), "Bearer mytoken");
+    }
+
+    #[tokio::test]
+    async fn test_resolve_auth_reads_from_auth_profile() {
+        use crate::auth_cache::{save_auth_cache, AuthCache};
+        use crate::cli::Stage;
+        use std::collections::BTreeMap;
+
+        let dir = tempfile::TempDir::new().unwrap();
+
+        // The active profile has NO credentials.
+        // The auth-source profile has Basic credentials.
+        save_auth_cache(
+            dir.path(),
+            "source",
+            &AuthCache::Basic {
+                username: "alice".to_string(),
+                password: "secret".to_string(),
+            },
+        )
+        .unwrap();
+
+        let ctx = AppContext {
+            config_dir: dir.path().to_path_buf(),
+            profile: "active".to_string(),
+            auth_profile: "source".to_string(),
+            stage: Stage::Dev,
+            auth_stage: Stage::Dev,
+            base_url: "http://example".to_string(),
+            defaults: BTreeMap::new(),
+        };
+
+        let resolved = resolve_auth(&ctx).await.unwrap();
+        match resolved {
+            Some(ResolvedAuth::Basic { username, password }) => {
+                assert_eq!(username, "alice");
+                assert_eq!(password, "secret");
+            }
+            _ => panic!("expected Basic auth from the override profile"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_resolve_auth_returns_none_when_auth_profile_has_no_credentials() {
+        use crate::auth_cache::{save_auth_cache, AuthCache};
+        use crate::cli::Stage;
+        use std::collections::BTreeMap;
+
+        let dir = tempfile::TempDir::new().unwrap();
+
+        // The active profile DOES have credentials, but the override profile does not.
+        save_auth_cache(
+            dir.path(),
+            "active",
+            &AuthCache::Basic {
+                username: "alice".to_string(),
+                password: "secret".to_string(),
+            },
+        )
+        .unwrap();
+
+        let ctx = AppContext {
+            config_dir: dir.path().to_path_buf(),
+            profile: "active".to_string(),
+            auth_profile: "source".to_string(),
+            stage: Stage::Dev,
+            auth_stage: Stage::Dev,
+            base_url: "http://example".to_string(),
+            defaults: BTreeMap::new(),
+        };
+
+        let resolved = resolve_auth(&ctx).await.unwrap();
+        assert!(
+            resolved.is_none(),
+            "should not fall back to active profile's credentials"
+        );
+    }
+
+    #[test]
+    fn test_status_reports_auth_profile_in_output() {
+        use crate::auth_cache::{save_auth_cache, AuthCache};
+        use crate::cli::Stage;
+        use std::collections::BTreeMap;
+
+        let dir = tempfile::TempDir::new().unwrap();
+        save_auth_cache(
+            dir.path(),
+            "source",
+            &AuthCache::Basic {
+                username: "alice".to_string(),
+                password: "secret".to_string(),
+            },
+        )
+        .unwrap();
+
+        let ctx = AppContext {
+            config_dir: dir.path().to_path_buf(),
+            profile: "active".to_string(),
+            auth_profile: "source".to_string(),
+            stage: Stage::Dev,
+            auth_stage: Stage::Dev,
+            base_url: "http://example".to_string(),
+            defaults: BTreeMap::new(),
+        };
+
+        // We can't directly capture Output, but we can re-invoke the same
+        // logic and inspect what would have been printed by reading the cache.
+        let cache = crate::auth_cache::load_auth_cache(&ctx.config_dir, &ctx.auth_profile)
+            .unwrap()
+            .unwrap();
+        match cache {
+            AuthCache::Basic { username, .. } => assert_eq!(username, "alice"),
+            _ => panic!("expected Basic"),
+        }
+
+        // Also call status directly with a non-JSON output to ensure no panic.
+        let out = crate::output::Output { json: false };
+        status(&ctx, &out).unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_attach_auth_uses_override_credentials() {
+        use crate::auth_cache::{save_auth_cache, AuthCache};
+        use crate::cli::Stage;
+        use base64::{engine::general_purpose::STANDARD, Engine};
+        use std::collections::BTreeMap;
+
+        let dir = tempfile::TempDir::new().unwrap();
+
+        // Profile A would target this base URL — but its auth file is empty.
+        let mut server = mockito::Server::new_async().await;
+
+        // Profile B holds the real credentials we want to use.
+        save_auth_cache(
+            dir.path(),
+            "profile-b",
+            &AuthCache::Basic {
+                username: "bob".to_string(),
+                password: "hunter2".to_string(),
+            },
+        )
+        .unwrap();
+
+        let expected_header = format!("Basic {}", STANDARD.encode("bob:hunter2"));
+
+        let mock = server
+            .mock("GET", "/ping")
+            .match_header("authorization", expected_header.as_str())
+            .with_status(200)
+            .with_body("ok")
+            .create_async()
+            .await;
+
+        // Active profile = A (its URL drives the request).
+        // Auth source = B (its credentials are attached).
+        let ctx = AppContext {
+            config_dir: dir.path().to_path_buf(),
+            profile: "profile-a".to_string(),
+            auth_profile: "profile-b".to_string(),
+            stage: Stage::Dev,
+            auth_stage: Stage::Dev,
+            base_url: server.url(),
+            defaults: BTreeMap::new(),
+        };
+
+        let client = reqwest::Client::new();
+        let req = client.get(format!("{}/ping", ctx.base_url));
+        let req = attach_auth(&ctx, req).await.unwrap();
+        let resp = req.send().await.unwrap();
+        assert!(resp.status().is_success());
+
+        mock.assert_async().await;
     }
 }
