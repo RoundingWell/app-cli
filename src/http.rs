@@ -8,11 +8,6 @@
 //! let api = ApiClient::new(ctx).await?;
 //! let teams: List<TeamAttributes> = api.get("teams").await?;
 //! ```
-//!
-//! Callers will migrate to this in a follow-up; `dead_code` is suppressed
-//! here meanwhile.
-
-#![allow(dead_code)]
 
 use anyhow::{bail, Context, Result};
 use reqwest::{Client, RequestBuilder};

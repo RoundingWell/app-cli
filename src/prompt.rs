@@ -2,11 +2,6 @@
 //!
 //! The `*_with` variants take generic `Read`/`Write` so callers can drive them
 //! in tests; the public wrappers default to stdin and stderr.
-//!
-//! Callers in `commands::config` and `version_check` will migrate to these in
-//! a follow-up; `dead_code` is suppressed here meanwhile.
-
-#![allow(dead_code)]
 
 use std::io::{BufRead, BufReader, Read, Write};
 

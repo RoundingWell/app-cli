@@ -4,7 +4,14 @@ use std::path::{Path, PathBuf};
 use anyhow::Result;
 use serde::Serialize;
 
+use crate::cli::{SkillsArgs, SkillsCommands};
 use crate::output::{CommandOutput, Output};
+
+pub fn dispatch(args: SkillsArgs, out: &Output) -> Result<()> {
+    match args.command {
+        SkillsCommands::Install(a) => run_install(a.local, a.no_clobber, out),
+    }
+}
 
 #[derive(Debug, Serialize)]
 pub struct SkillInstallOutput {
@@ -151,7 +158,7 @@ mod tests {
     fn test_run_install_local_creates_file() {
         let tmp = TempDir::new().unwrap();
         let out = make_out();
-        let result = install_to_base(&tmp.path(), false, &out);
+        let result = install_to_base(tmp.path(), false, &out);
         assert!(result.is_ok());
         let target = tmp.path().join(".claude/skills/rw/SKILL.md");
         assert!(target.exists());
@@ -166,7 +173,7 @@ mod tests {
         fs::create_dir_all(target.parent().unwrap()).unwrap();
         fs::write(&target, "preserved").unwrap();
         let out = make_out();
-        let result = install_to_base(&tmp.path(), true, &out);
+        let result = install_to_base(tmp.path(), true, &out);
         assert!(result.is_ok());
         let contents = fs::read_to_string(&target).unwrap();
         assert_eq!(contents, "preserved");
