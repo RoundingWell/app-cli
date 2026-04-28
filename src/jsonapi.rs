@@ -9,11 +9,6 @@
 //!
 //! Relationships default to `()` (ignored). Pass an explicit type when a
 //! command needs them.
-//!
-//! Callers will migrate to these in a follow-up; `dead_code` is suppressed
-//! here meanwhile.
-
-#![allow(dead_code)]
 
 use serde::Deserialize;
 

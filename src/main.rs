@@ -1,27 +1,18 @@
-mod api;
-mod auth_cache;
-mod cli;
-mod commands;
-mod config;
-mod http;
-mod jsonapi;
-mod migration;
-mod output;
-mod prompt;
-mod version_check;
-
 use anyhow::Result;
 use clap::Parser;
 use std::path::PathBuf;
 
-use api::resolve_api;
-use cli::{
-    ArtifactsCommands, AuthCommands, Cli, CliniciansCommands, Commands, ConfigCommands,
+use rw::api::resolve_api;
+use rw::cli::{
+    self, ArtifactsCommands, AuthCommands, Cli, CliniciansCommands, Commands, ConfigCommands,
     ConfigDefaultCommands, ConfigProfileCommands, ConfigUpdatesCommands, RolesCommands,
     SkillsCommands, TeamsCommands, WorkspacesCommands,
 };
-use config::{config_path, default_config_dir, load_config, resolve_profile, AppContext};
-use output::Output;
+use rw::commands;
+use rw::config::{self, config_path, default_config_dir, load_config, resolve_profile, AppContext};
+use rw::migration;
+use rw::output::Output;
+use rw::version_check;
 
 #[tokio::main]
 async fn main() {
