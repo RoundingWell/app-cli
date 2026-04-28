@@ -309,7 +309,7 @@ mod tests {
         assert!(config.profiles["demo"]
             .default
             .as_ref()
-            .map_or(true, |d| !d.contains_key("role")));
+            .is_none_or(|d| !d.contains_key("role")));
     }
 
     #[test]
@@ -389,7 +389,7 @@ mod tests {
         assert!(config.profiles["active"]
             .default
             .as_ref()
-            .map_or(true, |d| !d.contains_key("role")));
+            .is_none_or(|d| !d.contains_key("role")));
     }
 
     #[test]
@@ -412,7 +412,7 @@ mod tests {
         assert!(config.profiles["other"]
             .default
             .as_ref()
-            .map_or(true, |d| !d.contains_key("role")));
+            .is_none_or(|d| !d.contains_key("role")));
         config.profiles.get_mut("active").unwrap().default =
             Some([("role".to_string(), "physician".to_string())].into());
         assert_eq!(

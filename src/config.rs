@@ -198,8 +198,10 @@ mod tests {
 
     #[test]
     fn test_default_key_serialized_first() {
-        let mut config = Config::default();
-        config.default = Some("demo".to_string());
+        let mut config = Config {
+            default: Some("demo".to_string()),
+            ..Default::default()
+        };
         config.profiles.insert(
             "demo".to_string(),
             Profile {
