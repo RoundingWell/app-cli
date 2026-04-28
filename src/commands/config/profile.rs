@@ -11,9 +11,7 @@ use crate::cli::{
 use crate::config::{save_config_to, Config, Profile};
 use crate::output::{CommandOutput, Output};
 
-use super::prompts::{
-    prompt_organization, prompt_password, prompt_stage, prompt_text, prompt_yes_no,
-};
+use crate::prompt as p;
 
 // --- Output types ---
 
@@ -230,7 +228,7 @@ pub fn profile_rm(
     }
 
     if !args.yes {
-        let confirmed = prompt_yes_no(&format!("Remove profile '{}'?", args.name))?;
+        let confirmed = p::yes_no(&format!("Remove profile '{}'?", args.name))?;
         if !confirmed {
             return Ok(());
         }
@@ -264,11 +262,8 @@ pub fn profile_add(
         );
     }
 
-    let organization = args
-        .organization
-        .map(Ok)
-        .unwrap_or_else(prompt_organization)?;
-    let stage = args.stage.map(Ok).unwrap_or_else(prompt_stage)?;
+    let organization = args.organization.map(Ok).unwrap_or_else(p::organization)?;
+    let stage = args.stage.map(Ok).unwrap_or_else(p::stage)?;
 
     config.profiles.insert(
         args.name.clone(),
@@ -314,9 +309,9 @@ pub fn profile_auth(
                 Ok(u)
             }
         })
-        .unwrap_or_else(|| prompt_text("Username"))?;
+        .unwrap_or_else(|| p::text("Username"))?;
 
-    let password = args
+    let pw = args
         .password
         .map(|p| {
             if p.is_empty() {
@@ -325,9 +320,12 @@ pub fn profile_auth(
                 Ok(p)
             }
         })
-        .unwrap_or_else(prompt_password)?;
+        .unwrap_or_else(p::password)?;
 
-    let cache = AuthCache::Basic { username, password };
+    let cache = AuthCache::Basic {
+        username,
+        password: pw,
+    };
     save_auth_cache(config_dir, &args.name, &cache)?;
 
     out.print(&ProfileAuthOutput {

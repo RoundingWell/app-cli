@@ -10,6 +10,8 @@ use crate::cli::{AuthArgs, AuthCommands, Stage};
 use crate::config::AppContext;
 use crate::output::{CommandOutput, Output};
 
+use crate::domain::stage::WorkOsConfig;
+
 pub async fn dispatch(args: AuthArgs, ctx: &AppContext, out: &Output) -> Result<()> {
     match args.command {
         AuthCommands::Login => login(ctx, out).await,
@@ -19,29 +21,8 @@ pub async fn dispatch(args: AuthArgs, ctx: &AppContext, out: &Output) -> Result<
     }
 }
 
-struct WorkOsConfig {
-    client_id: &'static str,
-    device_auth_url: &'static str,
-    token_url: &'static str,
-}
-
-const PRODUCTION: WorkOsConfig = WorkOsConfig {
-    client_id: "client_01KMREY0MMNCB4B9AK4X9C0TBG",
-    device_auth_url: "https://authkit.roundingwell.com/oauth2/device_authorization",
-    token_url: "https://authkit.roundingwell.com/oauth2/token",
-};
-
-const DEV: WorkOsConfig = WorkOsConfig {
-    client_id: "client_01KMRQT9V7YE17BYA5NDSPK572",
-    device_auth_url: "https://expansive-market-28-staging.authkit.app/oauth2/device_authorization",
-    token_url: "https://expansive-market-28-staging.authkit.app/oauth2/token",
-};
-
 fn workos_config(stage: &Stage) -> &'static WorkOsConfig {
-    match stage {
-        Stage::Prod | Stage::Sandbox => &PRODUCTION,
-        _ => &DEV,
-    }
+    stage.workos_config()
 }
 
 /// Response from the device authorization endpoint.

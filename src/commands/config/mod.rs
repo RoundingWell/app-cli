@@ -5,7 +5,6 @@
 
 mod default;
 mod profile;
-mod prompts;
 mod updates;
 
 pub use default::{default_get, default_list, default_rm, default_set};
