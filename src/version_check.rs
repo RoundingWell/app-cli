@@ -375,8 +375,10 @@ mod tests {
         save_cache(&dir.path().join(CACHE_FILE), &cache);
 
         let cfg_path = dir.path().join("config.json");
-        let mut config = Config::default();
-        config.auto_update = Some(false);
+        let mut config = Config {
+            auto_update: Some(false),
+            ..Default::default()
+        };
 
         let out = Output { json: false };
         // Must not panic; warning goes to stderr which we can't easily capture here.
@@ -415,8 +417,10 @@ mod tests {
         save_cache(&dir.path().join(CACHE_FILE), &cache);
 
         let cfg_path = dir.path().join("config.json");
-        let mut config = Config::default();
-        config.auto_update = Some(false);
+        let mut config = Config {
+            auto_update: Some(false),
+            ..Default::default()
+        };
 
         let out = Output { json: false };
         check_and_update(dir.path(), &mut config, &cfg_path, &out).await;

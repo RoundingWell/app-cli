@@ -1,10 +1,17 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
+use crate::cli::{ArtifactsArgs, ArtifactsCommands};
 use crate::config::AppContext;
 use crate::http::ApiClient;
 use crate::jsonapi::List;
 use crate::output::{CommandOutput, Output};
+
+pub async fn dispatch(args: ArtifactsArgs, ctx: &AppContext, out: &Output) -> Result<()> {
+    match args.command {
+        ArtifactsCommands::List(a) => list(ctx, &a.artifact_type, &a.path, &a.term, out).await,
+    }
+}
 
 // --- JSON:API attributes ---
 

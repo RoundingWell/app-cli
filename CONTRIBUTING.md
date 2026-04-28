@@ -47,16 +47,22 @@ Format code:
 cargo fmt
 ```
 
-Check for lint warnings:
+Check for lint warnings (matches CI):
 
 ```sh
-cargo clippy
+cargo clippy --all-targets --all-features -- -D warnings
 ```
 
 Run the test suite:
 
 ```sh
 cargo test
+```
+
+Build a release binary (matches CI):
+
+```sh
+cargo build --release
 ```
 
 ## Project layout
