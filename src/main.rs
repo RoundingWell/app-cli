@@ -179,14 +179,17 @@ async fn run(cli: Cli, out: &Output) -> Result<()> {
             commands::api::dispatch(args, &ctx, out).await?;
         }
         Commands::Update => commands::update::dispatch(out).await?,
-        Commands::Config(args) => commands::config::dispatch(
-            args,
-            &mut config,
-            &cfg_path,
-            &config_dir,
-            profile_override.as_deref(),
-            out,
-        )?,
+        Commands::Config(args) => {
+            commands::config::dispatch(
+                args,
+                &mut config,
+                &cfg_path,
+                &config_dir,
+                profile_override.as_deref(),
+                out,
+            )
+            .await?
+        }
         Commands::Skills(args) => commands::skills::dispatch(args, out)?,
     }
 
