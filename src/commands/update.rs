@@ -31,6 +31,10 @@ pub async fn run(out: &Output) -> Result<()> {
     Ok(())
 }
 
+pub async fn dispatch(out: &Output) -> Result<()> {
+    run(out).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

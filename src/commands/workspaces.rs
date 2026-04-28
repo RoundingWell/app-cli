@@ -2,10 +2,18 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::cli::{WorkspacesArgs, WorkspacesCommands};
 use crate::config::AppContext;
 use crate::http::ApiClient;
 use crate::jsonapi::List;
 use crate::output::{CommandOutput, Output};
+
+pub async fn dispatch(args: WorkspacesArgs, ctx: &AppContext, out: &Output) -> Result<()> {
+    match args.command {
+        WorkspacesCommands::List(_) => list(ctx, out).await,
+        WorkspacesCommands::Show(a) => show(ctx, &a.target, out).await,
+    }
+}
 
 // --- JSON:API attributes ---
 
