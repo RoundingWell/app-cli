@@ -5,7 +5,22 @@ use jaq_json::{read, Val};
 use json_dotpath::DotPaths;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 
+use crate::cli::ApiArgs;
 use crate::config::AppContext;
+use crate::output::Output;
+
+pub async fn dispatch(args: ApiArgs, ctx: &AppContext, _out: &Output) -> Result<()> {
+    run(
+        ctx,
+        &args.endpoint,
+        &args.method,
+        &args.headers,
+        &args.fields,
+        args.jq.as_deref(),
+        args.raw,
+    )
+    .await
+}
 
 /// Run `rw api <endpoint>` – make an HTTP request to the RoundingWell API.
 ///

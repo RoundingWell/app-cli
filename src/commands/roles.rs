@@ -2,10 +2,18 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::cli::{RolesArgs, RolesCommands};
 use crate::config::AppContext;
 use crate::http::ApiClient;
 use crate::jsonapi::List;
 use crate::output::{CommandOutput, Output};
+
+pub async fn dispatch(args: RolesArgs, ctx: &AppContext, out: &Output) -> Result<()> {
+    match args.command {
+        RolesCommands::List(_) => list(ctx, out).await,
+        RolesCommands::Show(a) => show(ctx, &a.target, out).await,
+    }
+}
 
 // --- JSON:API attributes ---
 

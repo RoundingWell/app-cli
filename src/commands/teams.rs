@@ -2,10 +2,18 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::cli::{TeamsArgs, TeamsCommands};
 use crate::config::AppContext;
 use crate::http::ApiClient;
 use crate::jsonapi::List;
 use crate::output::{CommandOutput, Output};
+
+pub async fn dispatch(args: TeamsArgs, ctx: &AppContext, out: &Output) -> Result<()> {
+    match args.command {
+        TeamsCommands::List(_) => list(ctx, out).await,
+        TeamsCommands::Show(a) => show(ctx, &a.target, out).await,
+    }
+}
 
 // --- JSON:API attributes ---
 

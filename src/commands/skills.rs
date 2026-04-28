@@ -4,7 +4,14 @@ use std::path::{Path, PathBuf};
 use anyhow::Result;
 use serde::Serialize;
 
+use crate::cli::{SkillsArgs, SkillsCommands};
 use crate::output::{CommandOutput, Output};
+
+pub fn dispatch(args: SkillsArgs, out: &Output) -> Result<()> {
+    match args.command {
+        SkillsCommands::Install(a) => run_install(a.local, a.no_clobber, out),
+    }
+}
 
 #[derive(Debug, Serialize)]
 pub struct SkillInstallOutput {

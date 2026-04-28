@@ -6,9 +6,18 @@ use tokio::time::sleep;
 use crate::auth_cache::{
     delete_auth_cache, expires_at_from_duration, load_auth_cache, save_auth_cache, AuthCache,
 };
-use crate::cli::Stage;
+use crate::cli::{AuthArgs, AuthCommands, Stage};
 use crate::config::AppContext;
 use crate::output::{CommandOutput, Output};
+
+pub async fn dispatch(args: AuthArgs, ctx: &AppContext, out: &Output) -> Result<()> {
+    match args.command {
+        AuthCommands::Login => login(ctx, out).await,
+        AuthCommands::Status => status(ctx, out),
+        AuthCommands::Header => header(ctx, out).await,
+        AuthCommands::Logout => logout(ctx, out),
+    }
+}
 
 struct WorkOsConfig {
     client_id: &'static str,
