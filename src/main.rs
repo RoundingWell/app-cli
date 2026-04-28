@@ -3,8 +3,11 @@ mod auth_cache;
 mod cli;
 mod commands;
 mod config;
+mod http;
+mod jsonapi;
 mod migration;
 mod output;
+mod prompt;
 mod version_check;
 
 use anyhow::Result;
