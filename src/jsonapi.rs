@@ -7,15 +7,17 @@
 //! let list:   List<TeamAttributes>   = api.get("teams").await?;
 //! ```
 //!
-//! Relationships default to `()` (ignored). Pass an explicit type when a
-//! command needs them.
+//! Relationships default to `serde_json::Value` so the envelope accepts any
+//! JSON shape on the `relationships` field — null, object, array, primitive,
+//! or absent — and callers that don't read it can ignore the field. Pass an
+//! explicit type when a command needs typed relationships.
 
 use serde::Deserialize;
 
 /// A single JSON:API resource object: `{ "type", "id", "attributes", "relationships" }`.
 #[derive(Debug, Deserialize)]
 #[serde(bound(deserialize = "A: serde::Deserialize<'de>, R: Default + serde::Deserialize<'de>"))]
-pub struct Resource<A, R = ()> {
+pub struct Resource<A, R = serde_json::Value> {
     pub id: String,
     #[serde(rename = "type")]
     pub kind: String,
@@ -31,10 +33,10 @@ pub struct Document<T> {
 }
 
 /// Single-resource response: `{ "data": { ... } }`.
-pub type Single<A, R = ()> = Document<Resource<A, R>>;
+pub type Single<A, R = serde_json::Value> = Document<Resource<A, R>>;
 
 /// Multi-resource response: `{ "data": [ ... ] }`.
-pub type List<A, R = ()> = Document<Vec<Resource<A, R>>>;
+pub type List<A, R = serde_json::Value> = Document<Vec<Resource<A, R>>>;
 
 #[cfg(test)]
 mod tests {
@@ -78,7 +80,7 @@ mod tests {
     }
 
     #[test]
-    fn test_relationships_default_to_unit_when_absent() {
+    fn test_relationships_absent_deserializes() {
         let json = r#"{
             "data": {
                 "type": "teams",
@@ -86,8 +88,58 @@ mod tests {
                 "attributes": { "name": "Nursing", "abbr": "NUR" }
             }
         }"#;
-        // No `relationships` key — `()` default lets it deserialize cleanly.
-        let _: Single<TeamAttrs> = serde_json::from_str(json).unwrap();
+        let doc: Single<TeamAttrs> = serde_json::from_str(json).unwrap();
+        assert!(doc.data.relationships.is_null());
+    }
+
+    #[test]
+    fn test_relationships_null_deserializes() {
+        let json = r#"{
+            "data": {
+                "type": "teams",
+                "id": "uuid-1",
+                "attributes": { "name": "Nursing", "abbr": "NUR" },
+                "relationships": null
+            }
+        }"#;
+        let doc: Single<TeamAttrs> = serde_json::from_str(json).unwrap();
+        assert!(doc.data.relationships.is_null());
+    }
+
+    #[test]
+    fn test_relationships_empty_object_deserializes() {
+        let json = r#"{
+            "data": {
+                "type": "teams",
+                "id": "uuid-1",
+                "attributes": { "name": "Nursing", "abbr": "NUR" },
+                "relationships": {}
+            }
+        }"#;
+        let doc: Single<TeamAttrs> = serde_json::from_str(json).unwrap();
+        assert!(doc.data.relationships.is_object());
+    }
+
+    #[test]
+    fn test_relationships_populated_object_deserializes() {
+        // Regression: with `R = ()` this used to fail with
+        // "invalid type: map, expected unit". Real JSON:API responses for
+        // clinicians/teams/etc. carry populated relationships objects.
+        let json = r#"{
+            "data": {
+                "type": "clinicians",
+                "id": "c1",
+                "attributes": { "name": "x", "abbr": "x" },
+                "relationships": {
+                    "team": { "data": { "type": "teams", "id": "team-uuid" } }
+                }
+            }
+        }"#;
+        let doc: Single<TeamAttrs> = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            doc.data.relationships["team"]["data"]["id"],
+            serde_json::json!("team-uuid")
+        );
     }
 
     #[test]
