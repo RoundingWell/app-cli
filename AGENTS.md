@@ -5,12 +5,14 @@ This file provides guidance to AI agents when working with code in this reposito
 ## Commands
 
 ```sh
-cargo build --release   # Build (binary output: target/release/rw)
-cargo install --path .  # Install to ~/.cargo/bin/rw
-cargo test              # Run all tests
-cargo test <name>       # Run a single test by name (substring match)
-cargo clippy            # Lint
-cargo fmt               # Format
+cargo build --release                                       # Build (binary output: target/release/rw)
+cargo install --path .                                      # Install to ~/.cargo/bin/rw
+cargo test                                                  # Run all tests
+cargo test <name>                                           # Run a single test by name
+cargo fmt                                                   # Format
+cargo fmt --check                                           # Verify formatting
+cargo clippy --all-targets --all-features -- -D warnings    # Lint
+cargo audit                                                 # Audit dependencies for security advisories
 ```
 
 ## Instructions
