@@ -277,7 +277,7 @@ mod tests {
     fn test_field_integer_segment_nested() {
         let uuid = "uuid-123";
         let body = build_body(&[
-            format!("relationships.workspaces.data.0.type=workspaces"),
+            "relationships.workspaces.data.0.type=workspaces".to_string(),
             format!("relationships.workspaces.data.0.id={uuid}"),
         ])
         .unwrap();
