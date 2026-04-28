@@ -1,14 +1,15 @@
 //! `rw clinicians enable` / `disable` — toggles the `enabled` attribute.
 
-use anyhow::{bail, Context, Result};
-use reqwest::Client;
+use anyhow::Result;
 use uuid::Uuid;
 
 use crate::config::AppContext;
+use crate::http::ApiClient;
+use crate::jsonapi::Single;
 use crate::output::Output;
 
-use super::client::{apply_auth, resolve_uuid_by_email};
-use super::data::ClinicianSingleResponse;
+use super::client::resolve_uuid_by_email;
+use super::data::ClinicianAttributes;
 use super::output::ClinicianOutput;
 
 pub async fn enable(ctx: &AppContext, target: &str, out: &Output) -> Result<()> {
@@ -20,54 +21,28 @@ pub async fn disable(ctx: &AppContext, target: &str, out: &Output) -> Result<()>
 }
 
 async fn set_enabled(ctx: &AppContext, target: &str, enabled: bool, out: &Output) -> Result<()> {
-    let auth_header = crate::commands::auth::require_auth(ctx).await?;
-    let client = Client::new();
+    let api = ApiClient::new(ctx).await?;
     let uuid = if Uuid::parse_str(target).is_ok() {
         target.to_string()
     } else {
-        resolve_uuid_by_email(&client, &ctx.base_url, &auth_header, target).await?
+        resolve_uuid_by_email(&api, target).await?
     };
-    let result = patch_clinician(&client, &ctx.base_url, &auth_header, &uuid, enabled).await?;
-    out.print(&result);
-    Ok(())
-}
-
-async fn patch_clinician(
-    client: &Client,
-    base_url: &str,
-    auth_header: &str,
-    uuid: &str,
-    enabled: bool,
-) -> Result<ClinicianOutput> {
-    let url = format!("{}/clinicians/{}", base_url.trim_end_matches('/'), uuid);
-
     let body = serde_json::json!({
         "data": {
             "type": "clinicians",
-            "id": uuid,
+            "id": &uuid,
             "attributes": { "enabled": enabled }
         }
     });
-
-    let req = apply_auth(client.patch(&url), auth_header).json(&body);
-
-    let resp = req.send().await.context("PATCH /clinicians failed")?;
-    let status = resp.status();
-    let body = resp.text().await.context("failed to read response body")?;
-
-    if !status.is_success() {
-        bail!("API returned {}: {}", status, body);
-    }
-
-    let response: ClinicianSingleResponse =
-        serde_json::from_str(&body).context("failed to parse clinician response")?;
-
-    Ok(ClinicianOutput {
-        id: response.data.id,
-        name: response.data.attributes.name,
-        email: response.data.attributes.email,
-        enabled: response.data.attributes.enabled,
-    })
+    let resp: Single<ClinicianAttributes> =
+        api.patch(&format!("clinicians/{}", uuid), &body).await?;
+    out.print(&ClinicianOutput {
+        id: resp.data.id,
+        name: resp.data.attributes.name,
+        email: resp.data.attributes.email,
+        enabled: resp.data.attributes.enabled,
+    });
+    Ok(())
 }
 
 #[cfg(test)]

@@ -1,69 +1,8 @@
-use clap::{Args, Parser, Subcommand, ValueEnum};
+use clap::{Args, Parser, Subcommand};
 
-/// Validate that a string is a valid slug matching `^[a-z][a-z0-9-]*[a-z0-9]$`.
-pub fn validate_slug(s: &str) -> Result<String, String> {
-    if s.len() < 2 {
-        return Err(format!(
-            "'{}' is too short; slugs must be at least 2 characters",
-            s
-        ));
-    }
-    let is_valid = is_valid_slug(s);
-    if is_valid {
-        Ok(s.to_string())
-    } else {
-        Err(format!(
-            "'{}' is not a valid slug; must match ^[a-z][a-z0-9-]*[a-z0-9]$",
-            s
-        ))
-    }
-}
-
-fn is_valid_slug(s: &str) -> bool {
-    let chars: Vec<char> = s.chars().collect();
-    if chars.is_empty() {
-        return false;
-    }
-    // First char must be lowercase letter
-    if !chars[0].is_ascii_lowercase() {
-        return false;
-    }
-    // Last char must be lowercase letter or digit
-    let last = *chars.last().unwrap();
-    if !last.is_ascii_lowercase() && !last.is_ascii_digit() {
-        return false;
-    }
-    // All chars must be lowercase letter, digit, or hyphen
-    for &c in &chars {
-        if !c.is_ascii_lowercase() && !c.is_ascii_digit() && c != '-' {
-            return false;
-        }
-    }
-    true
-}
-
-/// Stage value for the --stage global option.
-#[derive(Debug, Clone, ValueEnum, serde::Serialize, serde::Deserialize, PartialEq)]
-#[serde(rename_all = "lowercase")]
-pub enum Stage {
-    Prod,
-    Sandbox,
-    Qa,
-    Dev,
-    Local,
-}
-
-impl std::fmt::Display for Stage {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Stage::Prod => write!(f, "prod"),
-            Stage::Sandbox => write!(f, "sandbox"),
-            Stage::Qa => write!(f, "qa"),
-            Stage::Dev => write!(f, "dev"),
-            Stage::Local => write!(f, "local"),
-        }
-    }
-}
+// `Stage` and `validate_slug` live in `crate::domain`. Re-exported here so
+// existing call sites that imported them via `crate::cli::*` keep working.
+pub use crate::domain::{validate_slug, Stage};
 
 /// The RoundingWell command line interface.
 #[derive(Parser, Debug)]
@@ -548,24 +487,6 @@ pub struct SkillsInstallArgs {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_valid_slugs() {
-        assert!(validate_slug("demonstration").is_ok());
-        assert!(validate_slug("mercy-clinic").is_ok());
-        assert!(validate_slug("qa2").is_ok());
-        assert!(validate_slug("qa").is_ok());
-    }
-
-    #[test]
-    fn test_invalid_slugs() {
-        assert!(validate_slug("a").is_err()); // too short
-        assert!(validate_slug("Mercy-Clinic").is_err()); // uppercase
-        assert!(validate_slug("Mercy Clinic").is_err()); // space not allowed
-        assert!(validate_slug("-clinic").is_err()); // starts with hyphen
-        assert!(validate_slug("mercy-").is_err()); // ends with hyphen
-        assert!(validate_slug("mercy_clinic").is_err()); // underscore not allowed
-    }
 
     #[test]
     fn test_auth_flag_long() {

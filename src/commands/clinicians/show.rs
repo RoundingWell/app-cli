@@ -1,25 +1,24 @@
 //! `rw clinicians show <target>` — shows a clinician by UUID, email, or "me".
 
 use anyhow::Result;
-use reqwest::Client;
 use uuid::Uuid;
 
 use crate::config::AppContext;
+use crate::http::ApiClient;
 use crate::output::Output;
 
 use super::client::{fetch_clinician_by_email_filter, fetch_clinician_by_uuid, fetch_clinician_me};
 use super::output::ClinicianShowOutput;
 
 pub async fn show(ctx: &AppContext, target: &str, out: &Output) -> Result<()> {
-    let auth_header = crate::commands::auth::require_auth(ctx).await?;
-    let client = Client::new();
+    let api = ApiClient::new(ctx).await?;
 
     let clinician = if target == "me" {
-        fetch_clinician_me(&client, &ctx.base_url, &auth_header).await?
+        fetch_clinician_me(&api).await?
     } else if Uuid::parse_str(target).is_ok() {
-        fetch_clinician_by_uuid(&client, &ctx.base_url, &auth_header, target).await?
+        fetch_clinician_by_uuid(&api, target).await?
     } else {
-        fetch_clinician_by_email_filter(&client, &ctx.base_url, &auth_header, target).await?
+        fetch_clinician_by_email_filter(&api, target).await?
     };
 
     out.print(&ClinicianShowOutput {

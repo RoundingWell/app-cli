@@ -1,17 +1,18 @@
 //! `rw clinicians update <target> --field <field> [--value <value>]`.
 
-use anyhow::{bail, Context, Result};
+use anyhow::{bail, Result};
 use regex::Regex;
-use reqwest::Client;
 use std::sync::LazyLock;
 use uuid::Uuid;
 use validator::Validate;
 
 use crate::config::AppContext;
+use crate::http::ApiClient;
+use crate::jsonapi::Single;
 use crate::output::Output;
 
-use super::client::{apply_auth, resolve_me, resolve_uuid_by_email};
-use super::data::ClinicianSingleResponse;
+use super::client::{resolve_me, resolve_uuid_by_email};
+use super::data::ClinicianAttributes;
 use super::output::ClinicianUpdateOutput;
 
 // --- Validation ---
@@ -108,64 +109,37 @@ pub async fn update(
 ) -> Result<()> {
     validate_field(field, value)?;
 
-    let auth_header = crate::commands::auth::require_auth(ctx).await?;
-    let client = Client::new();
+    let api = ApiClient::new(ctx).await?;
 
     let uuid = if target == "me" {
-        resolve_me(&client, &ctx.base_url, &auth_header).await?
+        resolve_me(&api).await?
     } else if Uuid::parse_str(target).is_ok() {
         target.to_string()
     } else {
-        resolve_uuid_by_email(&client, &ctx.base_url, &auth_header, target).await?
+        resolve_uuid_by_email(&api, target).await?
     };
-
-    let result =
-        patch_clinician_attribute(&client, &ctx.base_url, &auth_header, &uuid, field, value)
-            .await?;
-    out.print(&result);
-    Ok(())
-}
-
-async fn patch_clinician_attribute(
-    client: &Client,
-    base_url: &str,
-    auth_header: &str,
-    uuid: &str,
-    field: &str,
-    value: Option<&str>,
-) -> Result<ClinicianUpdateOutput> {
-    let url = format!("{}/clinicians/{}", base_url.trim_end_matches('/'), uuid);
 
     let attr_value = build_attribute_value(field, value);
     let body = serde_json::json!({
         "data": {
             "type": "clinicians",
-            "id": uuid,
+            "id": &uuid,
             "attributes": { (field): attr_value }
         }
     });
+    let resp: Single<ClinicianAttributes> =
+        api.patch(&format!("clinicians/{}", uuid), &body).await?;
 
-    let req = apply_auth(client.patch(&url), auth_header).json(&body);
-    let resp = req.send().await.context("PATCH /clinicians failed")?;
-    let status = resp.status();
-    let body_text = resp.text().await.context("failed to read response body")?;
-
-    if !status.is_success() {
-        bail!("API returned {}: {}", status, body_text);
-    }
-
-    let response: ClinicianSingleResponse =
-        serde_json::from_str(&body_text).context("failed to parse clinician response")?;
-
-    Ok(ClinicianUpdateOutput {
-        id: response.data.id,
-        name: response.data.attributes.name,
-        email: response.data.attributes.email,
-        enabled: response.data.attributes.enabled,
-        npi: response.data.attributes.npi,
-        credentials: response.data.attributes.credentials,
+    out.print(&ClinicianUpdateOutput {
+        id: resp.data.id,
+        name: resp.data.attributes.name,
+        email: resp.data.attributes.email,
+        enabled: resp.data.attributes.enabled,
+        npi: resp.data.attributes.npi,
+        credentials: resp.data.attributes.credentials,
         updated_field: field.to_string(),
-    })
+    });
+    Ok(())
 }
 
 #[cfg(test)]

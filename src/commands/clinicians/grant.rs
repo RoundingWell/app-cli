@@ -1,83 +1,44 @@
 //! `rw clinicians grant <target> <role>` — grants a role to a clinician.
 
-use anyhow::{bail, Context, Result};
-use reqwest::Client;
+use anyhow::Result;
 use uuid::Uuid;
 
 use crate::config::AppContext;
+use crate::http::ApiClient;
+use crate::jsonapi::Single;
 use crate::output::Output;
 
-use super::client::{apply_auth, resolve_uuid_by_email};
-use super::data::ClinicianSingleResponse;
+use super::client::resolve_uuid_by_email;
+use super::data::ClinicianAttributes;
 use super::output::GrantOutput;
 
 pub async fn grant(ctx: &AppContext, target: &str, role_target: &str, out: &Output) -> Result<()> {
-    let auth_header = crate::commands::auth::require_auth(ctx).await?;
-    let client = Client::new();
+    let api = ApiClient::new(ctx).await?;
     let clinician_uuid = if Uuid::parse_str(target).is_ok() {
         target.to_string()
     } else {
-        resolve_uuid_by_email(&client, &ctx.base_url, &auth_header, target).await?
+        resolve_uuid_by_email(&api, target).await?
     };
-    let (role_id, role_name) =
-        crate::commands::roles::resolve_role(&client, &ctx.base_url, &auth_header, role_target)
-            .await?;
-    let (clinician_id, clinician_name) = patch_clinician_role(
-        &client,
-        &ctx.base_url,
-        &auth_header,
-        &clinician_uuid,
-        &role_id,
-    )
-    .await?;
+    let (role_id, role_name) = crate::commands::roles::resolve_role(&api, role_target).await?;
+    let body = serde_json::json!({
+        "data": {
+            "type": "clinicians",
+            "id": &clinician_uuid,
+            "relationships": {
+                "role": { "data": { "type": "roles", "id": &role_id } }
+            }
+        }
+    });
+    let resp: Single<ClinicianAttributes> = api
+        .patch(&format!("clinicians/{}", clinician_uuid), &body)
+        .await?;
     out.print(&GrantOutput {
-        clinician_id,
-        clinician_name,
+        clinician_id: resp.data.id,
+        clinician_name: resp.data.attributes.name,
         role_id,
         role_name,
     });
     Ok(())
-}
-
-async fn patch_clinician_role(
-    client: &Client,
-    base_url: &str,
-    auth_header: &str,
-    clinician_uuid: &str,
-    role_uuid: &str,
-) -> Result<(String, String)> {
-    let url = format!(
-        "{}/clinicians/{}",
-        base_url.trim_end_matches('/'),
-        clinician_uuid
-    );
-
-    let body = serde_json::json!({
-        "data": {
-            "type": "clinicians",
-            "id": clinician_uuid,
-            "relationships": {
-                "role": {
-                    "data": { "type": "roles", "id": role_uuid }
-                }
-            }
-        }
-    });
-
-    let req = apply_auth(client.patch(&url), auth_header).json(&body);
-
-    let resp = req.send().await.context("PATCH /clinicians failed")?;
-    let status = resp.status();
-    let body = resp.text().await.context("failed to read response body")?;
-
-    if !status.is_success() {
-        bail!("API returned {}: {}", status, body);
-    }
-
-    let response: ClinicianSingleResponse =
-        serde_json::from_str(&body).context("failed to parse clinician response")?;
-
-    Ok((response.data.id, response.data.attributes.name))
 }
 
 #[cfg(test)]

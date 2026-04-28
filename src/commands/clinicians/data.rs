@@ -1,4 +1,4 @@
-//! JSON:API deserialization types for clinician responses.
+//! JSON:API attribute types for clinician resources.
 
 use serde::Deserialize;
 
@@ -13,18 +13,5 @@ pub(super) struct ClinicianAttributes {
     pub(super) credentials: Vec<String>,
 }
 
-#[derive(Debug, Deserialize)]
-pub(super) struct ClinicianResource {
-    pub(super) id: String,
-    pub(super) attributes: ClinicianAttributes,
-}
-
-#[derive(Debug, Deserialize)]
-pub(super) struct ClinicianListResponse {
-    pub(super) data: Vec<ClinicianResource>,
-}
-
-#[derive(Debug, Deserialize)]
-pub(super) struct ClinicianSingleResponse {
-    pub(super) data: ClinicianResource,
-}
+/// Convenience alias: a JSON:API resource carrying clinician attributes.
+pub(super) type Clinician = crate::jsonapi::Resource<ClinicianAttributes>;
