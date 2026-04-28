@@ -1,13 +1,14 @@
 //! `rw clinicians register <email> <name>` — registers a new clinician.
 
-use anyhow::{bail, Context, Result};
-use reqwest::Client;
+use anyhow::Result;
 
 use crate::config::AppContext;
+use crate::http::ApiClient;
+use crate::jsonapi::Single;
 use crate::output::Output;
 
-use super::client::{apply_auth, resolve_team};
-use super::data::ClinicianSingleResponse;
+use super::client::resolve_team;
+use super::data::ClinicianAttributes;
 use super::output::ClinicianRegisterOutput;
 use super::update::validate_field;
 
@@ -23,17 +24,16 @@ pub async fn register(
     validate_field("name", Some(name))?;
     validate_field("email", Some(email))?;
 
-    let auth_header = crate::commands::auth::require_auth(ctx).await?;
-    let client = Client::new();
+    let api = ApiClient::new(ctx).await?;
 
     // Resolve role and team before POST
     let role = if let Some(rt) = role_target {
-        Some(crate::commands::roles::resolve_role(&client, &ctx.base_url, &auth_header, rt).await?)
+        Some(crate::commands::roles::resolve_role(&api, rt).await?)
     } else {
         None
     };
     let team = if let Some(tt) = team_target {
-        Some(resolve_team(&client, &ctx.base_url, &auth_header, tt).await?)
+        Some(resolve_team(&api, tt).await?)
     } else {
         None
     };
@@ -41,10 +41,7 @@ pub async fn register(
     // Build JSON:API POST body
     let mut data = serde_json::json!({
         "type": "clinicians",
-        "attributes": {
-            "email": email,
-            "name": name
-        }
+        "attributes": { "email": email, "name": name }
     });
 
     if role.is_some() || team.is_some() {
@@ -65,24 +62,12 @@ pub async fn register(
     }
 
     let body = serde_json::json!({ "data": data });
-
-    let url = format!("{}/clinicians", ctx.base_url.trim_end_matches('/'));
-    let req = apply_auth(client.post(&url), &auth_header).json(&body);
-    let resp = req.send().await.context("POST /clinicians failed")?;
-    let status = resp.status();
-    let body_text = resp.text().await.context("failed to read response body")?;
-
-    if !status.is_success() {
-        bail!("API returned {}: {}", status, body_text);
-    }
-
-    let response: ClinicianSingleResponse =
-        serde_json::from_str(&body_text).context("failed to parse clinician response")?;
+    let resp: Single<ClinicianAttributes> = api.post("clinicians", &body).await?;
 
     out.print(&ClinicianRegisterOutput {
-        id: response.data.id,
-        name: response.data.attributes.name,
-        email: response.data.attributes.email,
+        id: resp.data.id,
+        name: resp.data.attributes.name,
+        email: resp.data.attributes.email,
     });
     Ok(())
 }

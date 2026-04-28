@@ -2,51 +2,40 @@
 //! flag, and default workspace memberships based on whether the email is a
 //! `@roundingwell.com` staff address or external.
 
-use anyhow::{bail, Context, Result};
-use reqwest::Client;
+use anyhow::Result;
 use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::config::AppContext;
+use crate::http::ApiClient;
+use crate::jsonapi::List;
 use crate::output::Output;
 
-use super::client::{apply_auth, fetch_clinician_by_email, fetch_clinician_by_uuid, resolve_team};
-use super::data::{ClinicianResource, ClinicianSingleResponse};
+use super::client::{fetch_clinician_by_email, fetch_clinician_by_uuid, resolve_team};
+use super::data::ClinicianAttributes;
 use super::output::PrepareOutput;
 
-// --- prepare-only deserialization types for `/workspaces` ---
+// --- prepare-only attributes for `/workspaces` ---
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Default)]
 struct WorkspaceSettings {
     #[serde(default)]
     default_for_clinicians: bool,
 }
 
 #[derive(Debug, Deserialize)]
-struct WorkspaceAttributes {
+struct WorkspaceAttrs {
     settings: WorkspaceSettings,
 }
 
-#[derive(Debug, Deserialize)]
-struct WorkspaceResource {
-    id: String,
-    attributes: WorkspaceAttributes,
-}
-
-#[derive(Debug, Deserialize)]
-struct WorkspaceListResponse {
-    data: Vec<WorkspaceResource>,
-}
-
 pub async fn prepare(ctx: &AppContext, target: &str, out: &Output) -> Result<()> {
-    let auth_header = crate::commands::auth::require_auth(ctx).await?;
-    let client = Client::new();
+    let api = ApiClient::new(ctx).await?;
 
     // Step 1: Resolve clinician UUID and email
     let clinician = if Uuid::parse_str(target).is_ok() {
-        fetch_clinician_by_uuid(&client, &ctx.base_url, &auth_header, target).await?
+        fetch_clinician_by_uuid(&api, target).await?
     } else {
-        fetch_clinician_by_email(&client, &ctx.base_url, &auth_header, target).await?
+        fetch_clinician_by_email(&api, target).await?
     };
     let clinician_uuid = clinician.id.clone();
     let clinician_name = clinician.attributes.name.clone();
@@ -73,45 +62,42 @@ pub async fn prepare(ctx: &AppContext, target: &str, out: &Output) -> Result<()>
     };
 
     // Step 4: Resolve role UUID
-    let (role_id, role_name) = crate::commands::roles::resolve_role(
-        &client,
-        &ctx.base_url,
-        &auth_header,
-        role_name_target,
-    )
-    .await?;
+    let (role_id, role_name) = crate::commands::roles::resolve_role(&api, role_name_target).await?;
 
     // Step 5: Resolve team UUID
-    let (team_id, team_name) =
-        resolve_team(&client, &ctx.base_url, &auth_header, team_name_target).await?;
+    let (team_id, team_name) = resolve_team(&api, team_name_target).await?;
 
     // Step 6: Fetch default workspace UUIDs
-    let workspace_ids =
-        fetch_default_clinician_workspace_uuids(&client, &ctx.base_url, &auth_header).await?;
+    let workspace_ids = fetch_default_clinician_workspace_uuids(&api).await?;
 
     // Step 7: PATCH clinician
-    patch_clinician_prepare(
-        &client,
-        &ctx.base_url,
-        &auth_header,
-        &clinician_uuid,
-        &role_id,
-        &team_id,
-        hidden,
-    )
-    .await?;
+    let patch_body = serde_json::json!({
+        "data": {
+            "type": "clinicians",
+            "id": &clinician_uuid,
+            "attributes": { "hidden": hidden },
+            "relationships": {
+                "role": { "data": { "type": "roles", "id": &role_id } },
+                "team": { "data": { "type": "teams", "id": &team_id } }
+            }
+        }
+    });
+    let _: crate::jsonapi::Single<ClinicianAttributes> = api
+        .patch(&format!("clinicians/{}", clinician_uuid), &patch_body)
+        .await?;
 
     // Step 8: Add to default workspaces; failures are warnings, not fatal errors
     let mut added_workspace_ids = Vec::new();
     for ws_uuid in &workspace_ids {
-        match add_clinician_to_workspace(
-            &client,
-            &ctx.base_url,
-            &auth_header,
-            ws_uuid,
-            &clinician_uuid,
-        )
-        .await
+        let body = serde_json::json!({
+            "data": [{ "type": "clinicians", "id": &clinician_uuid }]
+        });
+        match api
+            .post_void(
+                &format!("workspaces/{}/relationships/clinicians", ws_uuid),
+                &body,
+            )
+            .await
         {
             Ok(()) => added_workspace_ids.push(ws_uuid.clone()),
             Err(e) => out.warn(&format!(
@@ -135,88 +121,14 @@ pub async fn prepare(ctx: &AppContext, target: &str, out: &Output) -> Result<()>
     Ok(())
 }
 
-async fn fetch_default_clinician_workspace_uuids(
-    client: &Client,
-    base_url: &str,
-    auth_header: &str,
-) -> Result<Vec<String>> {
-    let url = format!("{}/workspaces", base_url.trim_end_matches('/'));
-    let req = apply_auth(client.get(&url), auth_header);
-    let resp = req.send().await.context("GET /workspaces failed")?;
-    let status = resp.status();
-    let body = resp.text().await.context("failed to read response body")?;
-    if !status.is_success() {
-        bail!("API returned {}: {}", status, body);
-    }
-    let list: WorkspaceListResponse =
-        serde_json::from_str(&body).context("failed to parse workspaces response")?;
-    Ok(list
+async fn fetch_default_clinician_workspace_uuids(api: &ApiClient<'_>) -> Result<Vec<String>> {
+    let resp: List<WorkspaceAttrs> = api.get("workspaces").await?;
+    Ok(resp
         .data
         .into_iter()
         .filter(|w| w.attributes.settings.default_for_clinicians)
         .map(|w| w.id)
         .collect())
-}
-
-async fn patch_clinician_prepare(
-    client: &Client,
-    base_url: &str,
-    auth_header: &str,
-    uuid: &str,
-    role_uuid: &str,
-    team_uuid: &str,
-    hidden: bool,
-) -> Result<ClinicianResource> {
-    let url = format!("{}/clinicians/{}", base_url.trim_end_matches('/'), uuid);
-    let body = serde_json::json!({
-        "data": {
-            "type": "clinicians",
-            "id": uuid,
-            "attributes": { "hidden": hidden },
-            "relationships": {
-                "role": { "data": { "type": "roles", "id": role_uuid } },
-                "team": { "data": { "type": "teams", "id": team_uuid } }
-            }
-        }
-    });
-    let req = apply_auth(client.patch(&url), auth_header).json(&body);
-    let resp = req.send().await.context("PATCH /clinicians failed")?;
-    let status = resp.status();
-    let body = resp.text().await.context("failed to read response body")?;
-    if !status.is_success() {
-        bail!("API returned {}: {}", status, body);
-    }
-    let response: ClinicianSingleResponse =
-        serde_json::from_str(&body).context("failed to parse clinician response")?;
-    Ok(response.data)
-}
-
-async fn add_clinician_to_workspace(
-    client: &Client,
-    base_url: &str,
-    auth_header: &str,
-    workspace_uuid: &str,
-    clinician_uuid: &str,
-) -> Result<()> {
-    let url = format!(
-        "{}/workspaces/{}/relationships/clinicians",
-        base_url.trim_end_matches('/'),
-        workspace_uuid
-    );
-    let body = serde_json::json!({
-        "data": [{ "type": "clinicians", "id": clinician_uuid }]
-    });
-    let req = apply_auth(client.post(&url), auth_header).json(&body);
-    let resp = req
-        .send()
-        .await
-        .context("POST /workspaces/.../relationships/clinicians failed")?;
-    let status = resp.status();
-    if !status.is_success() {
-        let body = resp.text().await.context("failed to read response body")?;
-        bail!("API returned {}: {}", status, body);
-    }
-    Ok(())
 }
 
 #[cfg(test)]
