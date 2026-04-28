@@ -1,12 +1,21 @@
-use anyhow::{bail, Context, Result};
-use reqwest::Client;
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::cli::{RolesArgs, RolesCommands};
 use crate::config::AppContext;
+use crate::http::ApiClient;
+use crate::jsonapi::List;
 use crate::output::{CommandOutput, Output};
 
-// --- JSON:API deserialization types ---
+pub async fn dispatch(args: RolesArgs, ctx: &AppContext, out: &Output) -> Result<()> {
+    match args.command {
+        RolesCommands::List(_) => list(ctx, out).await,
+        RolesCommands::Show(a) => show(ctx, &a.target, out).await,
+    }
+}
+
+// --- JSON:API attributes ---
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct RoleAttributes {
@@ -17,17 +26,6 @@ pub(crate) struct RoleAttributes {
     pub(crate) description: String,
     #[serde(default)]
     pub(crate) permissions: Vec<String>,
-}
-
-#[derive(Debug, Deserialize)]
-pub(crate) struct RoleResource {
-    pub(crate) id: String,
-    pub(crate) attributes: RoleAttributes,
-}
-
-#[derive(Debug, Deserialize)]
-pub(crate) struct RoleListResponse {
-    pub(crate) data: Vec<RoleResource>,
 }
 
 // --- Output types ---
@@ -87,28 +85,10 @@ impl CommandOutput for RoleShowOutput {
 // --- Public command functions ---
 
 pub async fn list(ctx: &AppContext, out: &Output) -> Result<()> {
-    let auth_header = super::auth::require_auth(ctx).await?;
-    let client = Client::new();
+    let api = ApiClient::new(ctx).await?;
+    let resp: List<RoleAttributes> = api.get("roles").await?;
 
-    let url = format!("{}/roles", ctx.base_url.trim_end_matches('/'));
-    let resp = client
-        .get(&url)
-        .header(reqwest::header::AUTHORIZATION, &auth_header)
-        .send()
-        .await
-        .context("GET /roles failed")?;
-
-    let status = resp.status();
-    let body = resp.text().await.context("failed to read response body")?;
-
-    if !status.is_success() {
-        anyhow::bail!("API returned {}: {}", status, body);
-    }
-
-    let list: RoleListResponse =
-        serde_json::from_str(&body).context("failed to parse roles response")?;
-
-    let mut roles: Vec<RoleRow> = list
+    let mut roles: Vec<RoleRow> = resp
         .data
         .into_iter()
         .map(|r| RoleRow {
@@ -124,38 +104,23 @@ pub async fn list(ctx: &AppContext, out: &Output) -> Result<()> {
     Ok(())
 }
 
+/// Resolves a role by UUID or name; returns `(id, name)`. Used by clinician
+/// commands.
 pub(crate) async fn resolve_role(
-    client: &Client,
-    base_url: &str,
-    auth_header: &str,
+    api: &ApiClient<'_>,
     role_target: &str,
 ) -> Result<(String, String)> {
-    let url = format!("{}/roles", base_url.trim_end_matches('/'));
-    let resp = client
-        .get(&url)
-        .header(reqwest::header::AUTHORIZATION, auth_header)
-        .send()
-        .await
-        .context("GET /roles failed")?;
-    let status = resp.status();
-    let body = resp.text().await.context("failed to read response body")?;
-
-    if !status.is_success() {
-        bail!("API returned {}: {}", status, body);
-    }
-
-    let list: RoleListResponse =
-        serde_json::from_str(&body).context("failed to parse roles response")?;
+    let resp: List<RoleAttributes> = api.get("roles").await?;
     let target_lower = role_target.to_lowercase();
 
     if Uuid::parse_str(role_target).is_ok() {
-        list.data
+        resp.data
             .into_iter()
             .find(|r| r.id.to_lowercase() == target_lower)
             .map(|r| (r.id, r.attributes.name))
             .ok_or_else(|| anyhow::anyhow!("no role found with id {}", role_target))
     } else {
-        list.data
+        resp.data
             .into_iter()
             .find(|r| r.attributes.name.to_lowercase() == target_lower)
             .map(|r| (r.id, r.attributes.name))
@@ -164,35 +129,17 @@ pub(crate) async fn resolve_role(
 }
 
 pub async fn show(ctx: &AppContext, target: &str, out: &Output) -> Result<()> {
-    let auth_header = super::auth::require_auth(ctx).await?;
-    let client = Client::new();
-
-    let url = format!("{}/roles", ctx.base_url.trim_end_matches('/'));
-    let resp = client
-        .get(&url)
-        .header(reqwest::header::AUTHORIZATION, &auth_header)
-        .send()
-        .await
-        .context("GET /roles failed")?;
-
-    let status = resp.status();
-    let body = resp.text().await.context("failed to read response body")?;
-
-    if !status.is_success() {
-        bail!("API returned {}: {}", status, body);
-    }
-
-    let list: RoleListResponse =
-        serde_json::from_str(&body).context("failed to parse roles response")?;
+    let api = ApiClient::new(ctx).await?;
+    let resp: List<RoleAttributes> = api.get("roles").await?;
     let target_lower = target.to_lowercase();
 
     let role = if Uuid::parse_str(target).is_ok() {
-        list.data
+        resp.data
             .into_iter()
             .find(|r| r.id.to_lowercase() == target_lower)
             .ok_or_else(|| anyhow::anyhow!("no role found with id {}", target))?
     } else {
-        list.data
+        resp.data
             .into_iter()
             .find(|r| r.attributes.name.to_lowercase() == target_lower)
             .ok_or_else(|| anyhow::anyhow!("no role found with name '{}'", target))?
@@ -399,7 +346,7 @@ mod tests {
             .await
             .unwrap();
         let body = resp.text().await.unwrap();
-        let list: RoleListResponse = serde_json::from_str(&body).unwrap();
+        let list: List<RoleAttributes> = serde_json::from_str(&body).unwrap();
         let role = list.data.into_iter().next().unwrap();
         let mut permissions = role.attributes.permissions;
         permissions.sort();

@@ -47,10 +47,10 @@ Format code:
 cargo fmt
 ```
 
-Check for lint warnings:
+Check for lint warnings (matches CI):
 
 ```sh
-cargo clippy
+cargo clippy --all-targets --all-features -- -D warnings
 ```
 
 Run the test suite:
@@ -58,3 +58,48 @@ Run the test suite:
 ```sh
 cargo test
 ```
+
+Build a release binary (matches CI):
+
+```sh
+cargo build --release
+```
+
+## Project layout
+
+`rw` is split into a library crate (`src/lib.rs`) holding all logic and a thin
+binary (`src/main.rs`) that wires it up. This split lets integration tests
+under `tests/` exercise the binary without re-implementing the dispatch shell.
+
+```
+src/
+├── lib.rs             pub module declarations (the crate's public surface)
+├── main.rs            binary entry point — argument parse + dispatch
+├── cli.rs             clap argument structs + Stage + slug validation
+├── config.rs          Config / Profile / AppContext + on-disk persistence
+├── api.rs             stage → API URL resolution
+├── auth_cache.rs      AuthCache (Bearer | Basic) + 0600 on-disk store
+├── http.rs            ApiClient: auth-attached reqwest wrapper
+├── jsonapi.rs         generic Document / Resource / Single / List envelopes
+├── prompt.rs          interactive yes_no / text / stage / organization prompts
+├── output.rs          Output{json} + CommandOutput trait
+├── migration.rs       one-shot config migrations on startup
+├── version_check.rs   GitHub release check + self_update
+└── commands/          one module per top-level subcommand
+
+tests/
+└── cli.rs             end-to-end integration tests (assert_cmd + tempfile)
+```
+
+`http.rs` and `jsonapi.rs` are the canonical way to reach the API. New
+commands should compose them rather than reaching for `reqwest::Client`
+directly:
+
+```rust
+let api = ApiClient::new(ctx).await?;
+let teams: List<TeamAttributes> = api.get("teams").await?;
+```
+
+`prompt::*_with` variants take generic `Read`/`Write` and are used directly
+in unit tests; the bare `prompt::yes_no` / `prompt::text` / etc. wrappers
+default to stdin and stderr.
