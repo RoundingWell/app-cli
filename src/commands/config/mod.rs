@@ -1,9 +1,10 @@
 //! `rw config` subcommands.
 //!
-//! Each top-level subcommand (`profile`, `updates`, `default`) lives in its
-//! own file. Interactive prompt helpers are in `prompts`.
+//! Each top-level subcommand (`profile`, `updates`, `default`, `doctor`) lives
+//! in its own file. Interactive prompt helpers are in `prompts`.
 
 mod default;
+mod doctor;
 mod profile;
 mod updates;
 
@@ -22,7 +23,7 @@ use crate::cli::{
 use crate::config::Config;
 use crate::output::Output;
 
-pub fn dispatch(
+pub async fn dispatch(
     args: ConfigArgs,
     config: &mut Config,
     cfg_path: &Path,
@@ -31,6 +32,7 @@ pub fn dispatch(
     out: &Output,
 ) -> Result<()> {
     match args.command {
+        ConfigCommands::Doctor => doctor::doctor(config, config_dir, profile_override, out).await,
         ConfigCommands::Profile(profile_args) => match profile_args.command {
             ConfigProfileCommands::List => {
                 profile_list(config, out);

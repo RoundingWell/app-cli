@@ -105,6 +105,26 @@ rw config profile auth mercy --username alice \
 | `--username` | `-u`  | Username for basic auth |
 | `--password` | `-P`  | Password for basic auth |
 
+#### Diagnostics
+
+`rw config doctor` runs a fixed sequence of checks against the active profile (or `--profile`):
+
+```sh
+rw config doctor          # Plain checklist
+rw config doctor --json   # Structured report
+```
+
+The four checks are:
+
+| Check      | What it verifies                                                  |
+|------------|-------------------------------------------------------------------|
+| `profile`  | A profile is selected and resolves to an organization + stage     |
+| `auth`     | Stored credentials exist and (for bearer tokens) aren't expired   |
+| `api`      | `GET /clinicians/me` returns a 2xx, with status + latency reported |
+| `defaults` | Lists configured `rw config default` keys (informational)         |
+
+Each check reports `pass`, `warn`, `fail`, `skip`, or `info`. A later check is skipped when an earlier one it depends on fails. The command exits non-zero if any check fails.
+
 ### Authentication
 
 ```sh

@@ -177,6 +177,8 @@ pub enum ConfigCommands {
     Updates(ConfigUpdatesArgs),
     /// Manage per-profile default values.
     Default(ConfigDefaultArgs),
+    /// Diagnose the active profile's configuration, credentials, and API reachability.
+    Doctor,
 }
 
 /// Arguments for `config default`.

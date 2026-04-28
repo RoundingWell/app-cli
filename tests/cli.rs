@@ -163,3 +163,48 @@ fn test_auth_status_unauthenticated_succeeds_with_message() {
         .success()
         .stdout(predicate::str::contains("Not authenticated"));
 }
+
+#[test]
+fn test_config_doctor_no_profile_fails_with_checklist() {
+    let dir = empty_config_dir();
+    rw(dir.path())
+        .args(["config", "doctor"])
+        .assert()
+        .failure()
+        .stdout(predicate::str::contains("✗ profile"))
+        .stdout(predicate::str::contains("- auth"))
+        .stdout(predicate::str::contains("- api"))
+        .stdout(predicate::str::contains("- defaults"));
+}
+
+#[test]
+fn test_config_doctor_no_auth_fails_and_skips_api() {
+    let dir = empty_config_dir();
+    let cfg = dir.path().join("config.json");
+    std::fs::write(
+        &cfg,
+        r#"{"default":"demo","profiles":{"demo":{"organization":"demonstration","stage":"prod"}}}"#,
+    )
+    .unwrap();
+
+    rw(dir.path())
+        .args(["config", "doctor"])
+        .assert()
+        .failure()
+        .stdout(predicate::str::contains("✓ profile"))
+        .stdout(predicate::str::contains("✗ auth"))
+        .stdout(predicate::str::contains("- api"))
+        .stdout(predicate::str::contains("ℹ defaults"));
+}
+
+#[test]
+fn test_config_doctor_json_output_shape() {
+    let dir = empty_config_dir();
+    rw(dir.path())
+        .args(["--json", "config", "doctor"])
+        .assert()
+        .failure()
+        .stdout(predicate::str::contains("\"ok\":false"))
+        .stdout(predicate::str::contains("\"name\":\"profile\""))
+        .stdout(predicate::str::contains("\"status\":\"fail\""));
+}
