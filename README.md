@@ -267,15 +267,15 @@ rw api clinicians --profile demo
 _**Note**: jq expression filtering uses [jaq](https://github.com/01mf02/jaq), which may have slight differences
 in formatting and may not support all jq features._
 
-Stage-to-domain mapping:
+Stage-to-base-URL mapping (the endpoint you pass is appended to this):
 
-| Stage     | Domain                                            |
-|-----------|---------------------------------------------------|
-| `prod`    | `https://{organization}.roundingwell.com`         |
-| `sandbox` | `https://{organization}-sandbox.roundingwell.com` |
-| `qa`      | `https://{organization}.roundingwell.com`         |
-| `dev`     | `https://{organization}.roundingwell.dev`         |
-| `local`   | `http://localhost:8080`                           |
+| Stage     | Base URL                                              |
+|-----------|-------------------------------------------------------|
+| `prod`    | `https://{organization}.roundingwell.com/api`         |
+| `sandbox` | `https://{organization}-sandbox.roundingwell.com/api` |
+| `qa`      | `https://{organization}.roundingwell.com/api`         |
+| `dev`     | `https://{organization}.roundingwell.dev/api`         |
+| `local`   | `http://localhost:8080`                               |
 
 ## Agent Skills
 
