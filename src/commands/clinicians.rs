@@ -121,7 +121,8 @@ struct ClinicianSingleResponse {
     data: ClinicianResource,
 }
 
-use super::teams::TeamListResponse;
+use super::teams::TeamAttributes;
+use crate::jsonapi::List;
 
 #[derive(Debug, Deserialize)]
 struct WorkspaceSettings {
@@ -888,7 +889,7 @@ async fn resolve_team(
         bail!("API returned {}: {}", status, body);
     }
 
-    let list: TeamListResponse =
+    let list: List<TeamAttributes> =
         serde_json::from_str(&body).context("failed to parse teams response")?;
     let target_lower = target.to_lowercase();
 

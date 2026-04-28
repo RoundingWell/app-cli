@@ -1,11 +1,12 @@
-use anyhow::{Context, Result};
-use reqwest::Client;
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
 use crate::config::AppContext;
+use crate::http::ApiClient;
+use crate::jsonapi::List;
 use crate::output::{CommandOutput, Output};
 
-// --- JSON:API deserialization types ---
+// --- JSON:API attributes ---
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct ArtifactAttributes {
@@ -13,16 +14,6 @@ pub(crate) struct ArtifactAttributes {
     pub(crate) identifier: String,
     #[serde(default)]
     pub(crate) values: serde_json::Map<String, serde_json::Value>,
-}
-
-#[derive(Debug, Deserialize)]
-pub(crate) struct ArtifactResource {
-    pub(crate) attributes: ArtifactAttributes,
-}
-
-#[derive(Debug, Deserialize)]
-pub(crate) struct ArtifactListResponse {
-    pub(crate) data: Vec<ArtifactResource>,
 }
 
 // --- Output types ---
@@ -78,33 +69,19 @@ pub async fn list(
     term: &str,
     out: &Output,
 ) -> Result<()> {
-    let auth_header = super::auth::require_auth(ctx).await?;
-    let client = Client::new();
+    let api = ApiClient::new(ctx).await?;
+    let resp: List<ArtifactAttributes> = api
+        .get_query(
+            "artifacts",
+            &[
+                ("filter[type]", artifact_type),
+                ("filter[path]", path),
+                ("filter[term]", term),
+            ],
+        )
+        .await?;
 
-    let url = format!("{}/artifacts", ctx.base_url.trim_end_matches('/'));
-    let resp = client
-        .get(&url)
-        .header(reqwest::header::AUTHORIZATION, &auth_header)
-        .query(&[
-            ("filter[type]", artifact_type),
-            ("filter[path]", path),
-            ("filter[term]", term),
-        ])
-        .send()
-        .await
-        .context("GET /artifacts failed")?;
-
-    let status = resp.status();
-    let body = resp.text().await.context("failed to read response body")?;
-
-    if !status.is_success() {
-        anyhow::bail!("API returned {}: {}", status, body);
-    }
-
-    let list: ArtifactListResponse =
-        serde_json::from_str(&body).context("failed to parse artifacts response")?;
-
-    let data: Vec<ArtifactRow> = list
+    let data: Vec<ArtifactRow> = resp
         .data
         .into_iter()
         .map(|a| ArtifactRow {

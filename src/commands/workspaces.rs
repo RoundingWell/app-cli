@@ -1,12 +1,13 @@
-use anyhow::{bail, Context, Result};
-use reqwest::Client;
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::config::AppContext;
+use crate::http::ApiClient;
+use crate::jsonapi::List;
 use crate::output::{CommandOutput, Output};
 
-// --- JSON:API deserialization types ---
+// --- JSON:API attributes ---
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct WorkspaceAttributes {
@@ -14,17 +15,6 @@ pub(crate) struct WorkspaceAttributes {
     pub(crate) name: String,
     #[serde(default)]
     pub(crate) settings: serde_json::Map<String, serde_json::Value>,
-}
-
-#[derive(Debug, Deserialize)]
-pub(crate) struct WorkspaceResource {
-    pub(crate) id: String,
-    pub(crate) attributes: WorkspaceAttributes,
-}
-
-#[derive(Debug, Deserialize)]
-pub(crate) struct WorkspaceListResponse {
-    pub(crate) data: Vec<WorkspaceResource>,
 }
 
 // --- Output types ---
@@ -94,28 +84,10 @@ impl CommandOutput for WorkspaceShowOutput {
 // --- Public command functions ---
 
 pub async fn list(ctx: &AppContext, out: &Output) -> Result<()> {
-    let auth_header = super::auth::require_auth(ctx).await?;
-    let client = Client::new();
+    let api = ApiClient::new(ctx).await?;
+    let resp: List<WorkspaceAttributes> = api.get("workspaces").await?;
 
-    let url = format!("{}/workspaces", ctx.base_url.trim_end_matches('/'));
-    let resp = client
-        .get(&url)
-        .header(reqwest::header::AUTHORIZATION, &auth_header)
-        .send()
-        .await
-        .context("GET /workspaces failed")?;
-
-    let status = resp.status();
-    let body = resp.text().await.context("failed to read response body")?;
-
-    if !status.is_success() {
-        anyhow::bail!("API returned {}: {}", status, body);
-    }
-
-    let list: WorkspaceListResponse =
-        serde_json::from_str(&body).context("failed to parse workspaces response")?;
-
-    let mut workspaces: Vec<WorkspaceRow> = list
+    let mut workspaces: Vec<WorkspaceRow> = resp
         .data
         .into_iter()
         .map(|w| WorkspaceRow {
@@ -132,35 +104,17 @@ pub async fn list(ctx: &AppContext, out: &Output) -> Result<()> {
 }
 
 pub async fn show(ctx: &AppContext, target: &str, out: &Output) -> Result<()> {
-    let auth_header = super::auth::require_auth(ctx).await?;
-    let client = Client::new();
-
-    let url = format!("{}/workspaces", ctx.base_url.trim_end_matches('/'));
-    let resp = client
-        .get(&url)
-        .header(reqwest::header::AUTHORIZATION, &auth_header)
-        .send()
-        .await
-        .context("GET /workspaces failed")?;
-
-    let status = resp.status();
-    let body = resp.text().await.context("failed to read response body")?;
-
-    if !status.is_success() {
-        bail!("API returned {}: {}", status, body);
-    }
-
-    let list: WorkspaceListResponse =
-        serde_json::from_str(&body).context("failed to parse workspaces response")?;
+    let api = ApiClient::new(ctx).await?;
+    let resp: List<WorkspaceAttributes> = api.get("workspaces").await?;
     let target_lower = target.to_lowercase();
 
     let workspace = if Uuid::parse_str(target).is_ok() {
-        list.data
+        resp.data
             .into_iter()
             .find(|w| w.id.to_lowercase() == target_lower)
             .ok_or_else(|| anyhow::anyhow!("no workspace found with id {}", target))?
     } else {
-        list.data
+        resp.data
             .into_iter()
             .find(|w| w.attributes.slug.to_lowercase() == target_lower)
             .ok_or_else(|| anyhow::anyhow!("no workspace found with slug '{}'", target))?
