@@ -1,28 +1,26 @@
-use anyhow::{bail, Context, Result};
-use reqwest::Client;
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::cli::{TeamsArgs, TeamsCommands};
 use crate::config::AppContext;
+use crate::http::ApiClient;
+use crate::jsonapi::List;
 use crate::output::{CommandOutput, Output};
 
-// --- JSON:API deserialization types ---
+pub async fn dispatch(args: TeamsArgs, ctx: &AppContext, out: &Output) -> Result<()> {
+    match args.command {
+        TeamsCommands::List(_) => list(ctx, out).await,
+        TeamsCommands::Show(a) => show(ctx, &a.target, out).await,
+    }
+}
+
+// --- JSON:API attributes ---
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct TeamAttributes {
     pub(crate) name: String,
     pub(crate) abbr: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub(crate) struct TeamResource {
-    pub(crate) id: String,
-    pub(crate) attributes: TeamAttributes,
-}
-
-#[derive(Debug, Deserialize)]
-pub(crate) struct TeamListResponse {
-    pub(crate) data: Vec<TeamResource>,
 }
 
 // --- Output types ---
@@ -69,28 +67,10 @@ impl CommandOutput for TeamShowOutput {
 // --- Public command functions ---
 
 pub async fn list(ctx: &AppContext, out: &Output) -> Result<()> {
-    let auth_header = super::auth::require_auth(ctx).await?;
-    let client = Client::new();
+    let api = ApiClient::new(ctx).await?;
+    let resp: List<TeamAttributes> = api.get("teams").await?;
 
-    let url = format!("{}/teams", ctx.base_url.trim_end_matches('/'));
-    let resp = client
-        .get(&url)
-        .header(reqwest::header::AUTHORIZATION, &auth_header)
-        .send()
-        .await
-        .context("GET /teams failed")?;
-
-    let status = resp.status();
-    let body = resp.text().await.context("failed to read response body")?;
-
-    if !status.is_success() {
-        anyhow::bail!("API returned {}: {}", status, body);
-    }
-
-    let list: TeamListResponse =
-        serde_json::from_str(&body).context("failed to parse teams response")?;
-
-    let mut teams: Vec<TeamRow> = list
+    let mut teams: Vec<TeamRow> = resp
         .data
         .into_iter()
         .map(|t| TeamRow {
@@ -107,35 +87,17 @@ pub async fn list(ctx: &AppContext, out: &Output) -> Result<()> {
 }
 
 pub async fn show(ctx: &AppContext, target: &str, out: &Output) -> Result<()> {
-    let auth_header = super::auth::require_auth(ctx).await?;
-    let client = Client::new();
-
-    let url = format!("{}/teams", ctx.base_url.trim_end_matches('/'));
-    let resp = client
-        .get(&url)
-        .header(reqwest::header::AUTHORIZATION, &auth_header)
-        .send()
-        .await
-        .context("GET /teams failed")?;
-
-    let status = resp.status();
-    let body = resp.text().await.context("failed to read response body")?;
-
-    if !status.is_success() {
-        bail!("API returned {}: {}", status, body);
-    }
-
-    let list: TeamListResponse =
-        serde_json::from_str(&body).context("failed to parse teams response")?;
+    let api = ApiClient::new(ctx).await?;
+    let resp: List<TeamAttributes> = api.get("teams").await?;
     let target_lower = target.to_lowercase();
 
     let team = if Uuid::parse_str(target).is_ok() {
-        list.data
+        resp.data
             .into_iter()
             .find(|t| t.id.to_lowercase() == target_lower)
             .ok_or_else(|| anyhow::anyhow!("no team found with id {}", target))?
     } else {
-        list.data
+        resp.data
             .into_iter()
             .find(|t| t.attributes.abbr.to_lowercase() == target_lower)
             .ok_or_else(|| anyhow::anyhow!("no team found with abbr '{}'", target))?

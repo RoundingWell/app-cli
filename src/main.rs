@@ -1,27 +1,14 @@
-mod api;
-mod auth_cache;
-mod cli;
-mod commands;
-mod config;
-mod http;
-mod jsonapi;
-mod migration;
-mod output;
-mod prompt;
-mod version_check;
-
 use anyhow::Result;
 use clap::Parser;
 use std::path::PathBuf;
 
-use api::resolve_api;
-use cli::{
-    ArtifactsCommands, AuthCommands, Cli, CliniciansCommands, Commands, ConfigCommands,
-    ConfigDefaultCommands, ConfigProfileCommands, ConfigUpdatesCommands, RolesCommands,
-    SkillsCommands, TeamsCommands, WorkspacesCommands,
-};
-use config::{config_path, default_config_dir, load_config, resolve_profile, AppContext};
-use output::Output;
+use rw::api::resolve_api;
+use rw::cli::{self, Cli, Commands};
+use rw::commands;
+use rw::config::{self, config_path, default_config_dir, load_config, resolve_profile, AppContext};
+use rw::migration;
+use rw::output::Output;
+use rw::version_check;
 
 #[tokio::main]
 async fn main() {
@@ -124,235 +111,83 @@ async fn run(cli: Cli, out: &Output) -> Result<()> {
 
     check_auth_compatible(&cli.command, cli.auth.as_deref())?;
 
+    let profile_override = cli.profile.clone();
+    let auth_override = cli.auth.clone();
+
     match cli.command {
-        Commands::Artifacts(artifacts_args) => {
+        Commands::Artifacts(args) => {
             let ctx = build_ctx(
                 &config,
-                cli.profile.as_deref(),
-                cli.auth.as_deref(),
+                profile_override.as_deref(),
+                auth_override.as_deref(),
                 config_dir,
             )?;
-            match artifacts_args.command {
-                ArtifactsCommands::List(args) => {
-                    commands::artifacts::list(
-                        &ctx,
-                        &args.artifact_type,
-                        &args.path,
-                        &args.term,
-                        out,
-                    )
-                    .await?;
-                }
-            }
+            commands::artifacts::dispatch(args, &ctx, out).await?;
         }
-        Commands::Auth(auth_args) => {
+        Commands::Auth(args) => {
             let ctx = build_ctx(
                 &config,
-                cli.profile.as_deref(),
-                cli.auth.as_deref(),
+                profile_override.as_deref(),
+                auth_override.as_deref(),
                 config_dir,
             )?;
-            match auth_args.command {
-                AuthCommands::Login => {
-                    commands::auth::login(&ctx, out).await?;
-                }
-                AuthCommands::Status => {
-                    commands::auth::status(&ctx, out)?;
-                }
-                AuthCommands::Header => {
-                    commands::auth::header(&ctx, out).await?;
-                }
-                AuthCommands::Logout => {
-                    commands::auth::logout(&ctx, out)?;
-                }
-            }
+            commands::auth::dispatch(args, &ctx, out).await?;
         }
-        Commands::Clinicians(clinician_args) => {
+        Commands::Clinicians(args) => {
             let ctx = build_ctx(
                 &config,
-                cli.profile.as_deref(),
-                cli.auth.as_deref(),
+                profile_override.as_deref(),
+                auth_override.as_deref(),
                 config_dir,
             )?;
-            match clinician_args.command {
-                CliniciansCommands::Assign(args) => {
-                    commands::clinicians::assign(&ctx, &args.target, &args.team, out).await?;
-                }
-                CliniciansCommands::Grant(args) => {
-                    commands::clinicians::grant(&ctx, &args.target, &args.role, out).await?;
-                }
-                CliniciansCommands::Enable(args) => {
-                    commands::clinicians::enable(&ctx, &args.target, out).await?;
-                }
-                CliniciansCommands::Disable(args) => {
-                    commands::clinicians::disable(&ctx, &args.target, out).await?;
-                }
-                CliniciansCommands::Prepare(args) => {
-                    commands::clinicians::prepare(&ctx, &args.target, out).await?;
-                }
-                CliniciansCommands::Register(args) => {
-                    commands::clinicians::register(
-                        &ctx,
-                        &args.email,
-                        &args.name,
-                        args.role.as_deref(),
-                        args.team.as_deref(),
-                        out,
-                    )
-                    .await?;
-                }
-                CliniciansCommands::Show(args) => {
-                    commands::clinicians::show(&ctx, &args.target, out).await?;
-                }
-                CliniciansCommands::Update(args) => {
-                    commands::clinicians::update(
-                        &ctx,
-                        &args.target,
-                        &args.field,
-                        args.value.as_deref(),
-                        out,
-                    )
-                    .await?;
-                }
-            }
+            commands::clinicians::dispatch(args, &ctx, out).await?;
         }
-        Commands::Teams(teams_args) => {
+        Commands::Teams(args) => {
             let ctx = build_ctx(
                 &config,
-                cli.profile.as_deref(),
-                cli.auth.as_deref(),
+                profile_override.as_deref(),
+                auth_override.as_deref(),
                 config_dir,
             )?;
-            match teams_args.command {
-                TeamsCommands::List(_) => {
-                    commands::teams::list(&ctx, out).await?;
-                }
-                TeamsCommands::Show(args) => {
-                    commands::teams::show(&ctx, &args.target, out).await?;
-                }
-            }
+            commands::teams::dispatch(args, &ctx, out).await?;
         }
-        Commands::Roles(roles_args) => {
+        Commands::Roles(args) => {
             let ctx = build_ctx(
                 &config,
-                cli.profile.as_deref(),
-                cli.auth.as_deref(),
+                profile_override.as_deref(),
+                auth_override.as_deref(),
                 config_dir,
             )?;
-            match roles_args.command {
-                RolesCommands::List(_) => {
-                    commands::roles::list(&ctx, out).await?;
-                }
-                RolesCommands::Show(args) => {
-                    commands::roles::show(&ctx, &args.target, out).await?;
-                }
-            }
+            commands::roles::dispatch(args, &ctx, out).await?;
         }
-        Commands::Workspaces(workspaces_args) => {
+        Commands::Workspaces(args) => {
             let ctx = build_ctx(
                 &config,
-                cli.profile.as_deref(),
-                cli.auth.as_deref(),
+                profile_override.as_deref(),
+                auth_override.as_deref(),
                 config_dir,
             )?;
-            match workspaces_args.command {
-                WorkspacesCommands::List(_) => {
-                    commands::workspaces::list(&ctx, out).await?;
-                }
-                WorkspacesCommands::Show(args) => {
-                    commands::workspaces::show(&ctx, &args.target, out).await?;
-                }
-            }
+            commands::workspaces::dispatch(args, &ctx, out).await?;
         }
-        Commands::Api(api_args) => {
+        Commands::Api(args) => {
             let ctx = build_ctx(
                 &config,
-                cli.profile.as_deref(),
-                cli.auth.as_deref(),
+                profile_override.as_deref(),
+                auth_override.as_deref(),
                 config_dir,
             )?;
-            commands::api::run(
-                &ctx,
-                &api_args.endpoint,
-                &api_args.method,
-                &api_args.headers,
-                &api_args.fields,
-                api_args.jq.as_deref(),
-                api_args.raw,
-            )
-            .await?;
+            commands::api::dispatch(args, &ctx, out).await?;
         }
-        Commands::Update => {
-            commands::update::run(out).await?;
-        }
-        Commands::Config(config_args) => match config_args.command {
-            ConfigCommands::Profile(profile_args) => match profile_args.command {
-                ConfigProfileCommands::List => {
-                    commands::config::profile_list(&config, out);
-                }
-                ConfigProfileCommands::Show => {
-                    commands::config::profile_show(&config, &config_dir, out)?;
-                }
-                ConfigProfileCommands::Use(args) => {
-                    commands::config::profile_use(&args.name, &mut config, &cfg_path, out)?;
-                }
-                ConfigProfileCommands::Set(args) => {
-                    commands::config::profile_set(args, &mut config, &cfg_path, out)?;
-                }
-                ConfigProfileCommands::Rm(args) => {
-                    commands::config::profile_rm(args, &mut config, &cfg_path, &config_dir, out)?;
-                }
-                ConfigProfileCommands::Add(args) => {
-                    commands::config::profile_add(args, &mut config, &cfg_path, out)?;
-                }
-                ConfigProfileCommands::Auth(args) => {
-                    commands::config::profile_auth(args, &config, &config_dir, out)?;
-                }
-            },
-            ConfigCommands::Updates(updates_args) => match updates_args.command {
-                ConfigUpdatesCommands::Show => {
-                    commands::config::updates_show(&config, out);
-                }
-                ConfigUpdatesCommands::Enable => {
-                    commands::config::updates_enable(&mut config, &cfg_path, out)?;
-                }
-                ConfigUpdatesCommands::Disable => {
-                    commands::config::updates_disable(&mut config, &cfg_path, out)?;
-                }
-            },
-            ConfigCommands::Default(default_args) => match default_args.command {
-                ConfigDefaultCommands::Set(args) => {
-                    commands::config::default_set(
-                        &args.key,
-                        &args.value,
-                        cli.profile.as_deref(),
-                        &mut config,
-                        &cfg_path,
-                        out,
-                    )?;
-                }
-                ConfigDefaultCommands::Get(args) => {
-                    commands::config::default_get(&args.key, cli.profile.as_deref(), &config, out)?;
-                }
-                ConfigDefaultCommands::Rm(args) => {
-                    commands::config::default_rm(
-                        &args.key,
-                        cli.profile.as_deref(),
-                        &mut config,
-                        &cfg_path,
-                        out,
-                    )?;
-                }
-                ConfigDefaultCommands::List => {
-                    commands::config::default_list(cli.profile.as_deref(), &config, out)?;
-                }
-            },
-        },
-        Commands::Skills(skills_args) => match skills_args.command {
-            SkillsCommands::Install(args) => {
-                commands::skills::run_install(args.local, args.no_clobber, out)?;
-            }
-        },
+        Commands::Update => commands::update::dispatch(out).await?,
+        Commands::Config(args) => commands::config::dispatch(
+            args,
+            &mut config,
+            &cfg_path,
+            &config_dir,
+            profile_override.as_deref(),
+            out,
+        )?,
+        Commands::Skills(args) => commands::skills::dispatch(args, out)?,
     }
 
     Ok(())
@@ -361,7 +196,7 @@ async fn run(cli: Cli, out: &Output) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cli::AuthArgs;
+    use cli::{AuthArgs, AuthCommands};
 
     fn login_cmd() -> Commands {
         Commands::Auth(AuthArgs {
