@@ -146,6 +146,7 @@ mod tests {
         patch_mock: mockito::Mock,
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn setup_prepare_mocks_by_uuid(
         server: &mut mockito::ServerGuard,
         clinician_uuid: &str,
