@@ -31,6 +31,8 @@ pub struct Cli {
 /// Top-level subcommands.
 #[derive(Subcommand, Debug)]
 pub enum Commands {
+    /// Inspect actions.
+    Actions(ActionsArgs),
     /// Authenticate with RoundingWell.
     Auth(AuthArgs),
     /// Make an API request.
@@ -51,6 +53,27 @@ pub enum Commands {
     Config(ConfigArgs),
     /// Manage agent skills.
     Skills(SkillsArgs),
+}
+
+/// Arguments for the `actions` subcommand.
+#[derive(Args, Debug)]
+pub struct ActionsArgs {
+    #[command(subcommand)]
+    pub command: ActionsCommands,
+}
+
+/// Subcommands for `actions`.
+#[derive(Subcommand, Debug)]
+pub enum ActionsCommands {
+    /// Trace an action's patient, program, and form workspaces to find misalignments.
+    Trace(ActionsTraceArgs),
+}
+
+/// Arguments for `actions trace`.
+#[derive(Args, Debug)]
+pub struct ActionsTraceArgs {
+    /// Action UUID.
+    pub uuid: String,
 }
 
 /// Arguments for the `artifacts` subcommand.

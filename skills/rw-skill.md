@@ -6,6 +6,7 @@ triggers:
   - roundingwell
   - /rw
   # Indirect invocation
+  - roundingwell actions
   - roundingwell artifacts
   - roundingwell clinicians
   - roundingwell roles
@@ -74,6 +75,15 @@ rw clinicians update me --field credentials  # omit --value to clear (sends [])
 ```
 
 Fields for `update`: `name`, `email`, `npi`, `credentials`
+
+### `rw actions` — Action Tracing
+
+```sh
+# Trace an action's patient, program, and form workspaces (UUID required)
+rw actions trace 60fda0c4-eca0-434a-80d8-fd4e490aa051
+```
+
+`trace` fetches the action, then its related patient, program, and form. It prints a workspace tree for each and lists any workspaces where the patient and program (via action) or patient and form do not align.
 
 ### `rw artifacts` — Artifact Listing
 

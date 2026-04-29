@@ -1,3 +1,4 @@
+pub mod actions;
 pub mod api;
 pub mod artifacts;
 pub mod auth;
