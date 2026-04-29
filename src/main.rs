@@ -115,6 +115,15 @@ async fn run(cli: Cli, out: &Output) -> Result<()> {
     let auth_override = cli.auth.clone();
 
     match cli.command {
+        Commands::Actions(args) => {
+            let ctx = build_ctx(
+                &config,
+                profile_override.as_deref(),
+                auth_override.as_deref(),
+                config_dir,
+            )?;
+            commands::actions::dispatch(args, &ctx, out).await?;
+        }
         Commands::Artifacts(args) => {
             let ctx = build_ctx(
                 &config,

@@ -161,6 +161,18 @@ profile's credentials.
 
 ## Tools
 
+### Actions
+
+```sh
+# Trace an action's patient, program, and form workspaces to find misalignments
+rw actions trace 60fda0c4-eca0-434a-80d8-fd4e490aa051
+
+# Output as JSON
+rw actions trace 60fda0c4-eca0-434a-80d8-fd4e490aa051 --json
+```
+
+The command resolves the action, then fetches the related patient, program, and form. It renders one workspace tree per resource and reports any workspace memberships where the patient does not align with the program (via the action) or with the form.
+
 ### Artifacts
 
 ```sh
