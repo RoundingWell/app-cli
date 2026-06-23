@@ -1,0 +1,11 @@
+# cargo-audit configuration
+# https://github.com/rustsec/rustsec/blob/main/cargo-audit/audit.toml.example
+
+[advisories]
+ignore = [
+    # proc-macro-error2 is unmaintained. It is pulled in transitively by
+    # tabled and validator (both at their latest published versions), so
+    # there is no upgrade path to remove it. Revisit when either crate
+    # drops the dependency.
+    "RUSTSEC-2026-0173",
+]
