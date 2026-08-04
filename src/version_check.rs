@@ -119,7 +119,7 @@ pub fn do_update() -> anyhow::Result<(String, bool)> {
         .build()?
         .update()?;
 
-    Ok((status.version().to_string(), status.updated()))
+    Ok((status.version().to_string(), status.is_updated()))
 }
 
 /// Returns the latest version string, either from cache or from GitHub.
