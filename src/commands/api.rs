@@ -1,7 +1,4 @@
 use anyhow::{bail, Context, Result};
-use jaq_core::load::{Arena, File, Loader};
-use jaq_core::{data, unwrap_valr, Compiler, Ctx, Vars};
-use jaq_json::{read, Val};
 use json_dotpath::DotPaths;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 
@@ -16,7 +13,6 @@ pub async fn dispatch(args: ApiArgs, ctx: &AppContext, _out: &Output) -> Result<
         &args.method,
         &args.headers,
         &args.fields,
-        args.jq.as_deref(),
         args.raw,
     )
     .await
@@ -30,7 +26,6 @@ pub async fn dispatch(args: ApiArgs, ctx: &AppContext, _out: &Output) -> Result<
 /// * `method`        – HTTP verb (e.g. `GET`, `POST`)
 /// * `extra_headers` – additional raw header strings (`"Name: value"`)
 /// * `fields`        – request body key=value pairs; forces POST when present
-/// * `jq`            – optional jq filter expression to apply to the response
 /// * `raw`           – if true, print raw JSON; otherwise pretty-print
 pub async fn run(
     ctx: &AppContext,
@@ -38,7 +33,6 @@ pub async fn run(
     method: &str,
     extra_headers: &[String],
     fields: &[String],
-    jq: Option<&str>,
     raw: bool,
 ) -> Result<()> {
     // Strip leading slash from endpoint so we can join cleanly.
@@ -90,9 +84,7 @@ pub async fn run(
         bail!("API returned {}: {}", status, body);
     }
 
-    if let Some(filter) = jq {
-        print!("{}", apply_jq(filter, &body)?);
-    } else if raw {
+    if raw {
         print!("{}", body);
     } else {
         // Pretty-print JSON when possible; fall back to raw output.
@@ -103,57 +95,6 @@ pub async fn run(
     }
 
     Ok(())
-}
-
-/// Apply a jq filter expression to `json` using the `jaq-core` library.
-fn apply_jq(filter_str: &str, json: &str) -> Result<String> {
-    let input = read::parse_single(json.as_bytes())
-        .map_err(|e| anyhow::anyhow!("jq: invalid JSON input: {e}"))?;
-
-    let program = File {
-        code: filter_str,
-        path: (),
-    };
-
-    let defs = jaq_core::defs()
-        .chain(jaq_std::defs())
-        .chain(jaq_json::defs());
-    let funs = jaq_core::funs()
-        .chain(jaq_std::funs())
-        .chain(jaq_json::funs());
-
-    let loader = Loader::new(defs);
-    let arena = Arena::default();
-
-    let modules = loader
-        .load(&arena, program)
-        .map_err(|errs| anyhow::anyhow!("jq: {}", format_load_errors(errs)))?;
-
-    let filter = Compiler::default()
-        .with_funs(funs)
-        .compile(modules)
-        .map_err(|errs| anyhow::anyhow!("jq: {errs:?}"))?;
-
-    let ctx = Ctx::<data::JustLut<Val>>::new(&filter.lut, Vars::new([]));
-    let out = filter.id.run((ctx, input)).map(unwrap_valr);
-
-    let mut output = String::new();
-    for result in out {
-        let val = result.map_err(|e| anyhow::anyhow!("jq: {e}"))?;
-        if !output.is_empty() {
-            output.push('\n');
-        }
-        output.push_str(&val.to_string());
-    }
-    if !output.is_empty() {
-        output.push('\n');
-    }
-
-    Ok(output)
-}
-
-fn format_load_errors<E: std::fmt::Debug>(errs: E) -> String {
-    format!("{errs:?}")
 }
 
 /// Parse a raw `"Name: value"` header string into typed header components.
@@ -340,33 +281,5 @@ mod tests {
     #[test]
     fn test_parse_field_invalid() {
         assert!(parse_field("no-equals").is_err());
-    }
-
-    #[test]
-    fn test_apply_jq_identity() {
-        let result = apply_jq(".", r#"{"a":1}"#).unwrap();
-        assert_eq!(result.trim(), r#"{"a":1}"#);
-    }
-
-    #[test]
-    fn test_apply_jq_field_access() {
-        let result = apply_jq(".name", r#"{"name":"Alice"}"#).unwrap();
-        assert_eq!(result.trim(), r#""Alice""#);
-    }
-
-    #[test]
-    fn test_apply_jq_array_iterator() {
-        let result = apply_jq(".[]", r#"[1,2,3]"#).unwrap();
-        assert_eq!(result.trim(), "1\n2\n3");
-    }
-
-    #[test]
-    fn test_apply_jq_invalid_filter() {
-        assert!(apply_jq("invalid!!!", "{}").is_err());
-    }
-
-    #[test]
-    fn test_apply_jq_invalid_json() {
-        assert!(apply_jq(".", "not-json").is_err());
     }
 }
