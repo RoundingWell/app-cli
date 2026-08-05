@@ -286,18 +286,12 @@ rw api clinicians --method POST --field data.attributes.name="Alice Avalon" --fi
 # Add extra request headers
 rw api clinicians --header "Accept: application/json"
 
-# Filter output with a jq expression
-rw api clinicians --jq '.[0]'
-
 # Print raw (unpretty) JSON
 rw api clinicians --raw
 
 # Use a named profile
 rw api clinicians --profile demo
 ```
-
-_**Note**: jq expression filtering uses [jaq](https://github.com/01mf02/jaq), which may have slight differences
-in formatting and may not support all jq features._
 
 Stage-to-base-URL mapping (the endpoint you pass is appended to this):
 

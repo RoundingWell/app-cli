@@ -474,10 +474,6 @@ pub struct ApiArgs {
     #[arg(short = 'f', long = "field")]
     pub fields: Vec<String>,
 
-    /// Filter output with a jq expression.
-    #[arg(short = 'q', long)]
-    pub jq: Option<String>,
-
     /// Output raw JSON without pretty-printing.
     #[arg(long)]
     pub raw: bool,
