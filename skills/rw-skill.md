@@ -26,10 +26,11 @@ These flags work on every command:
 |----------------|-------|------------------------------------------------------------------------|
 | `--profile`    | `-p`  | Named profile to use                                                   |
 | `--auth`       | `-A`  | Use credentials from another profile (overrides only the auth source)  |
+| `--stage`      | `-g`  | Stage to target, overriding the profile's configured stage             |
 | `--config-dir` | `-c`  | Configuration directory path                                           |
 | `--json`       |       | Output results as JSON                                                 |
 
-All commands that call the API require a configured profile. Ensure that a profile has been set using `rw config profile show` or pass `--profile` on each invocation.
+All commands that call the API require a configured profile. Ensure that a profile has been set using `rw config profile show` or pass `--profile` on each invocation. Pass `--stage` to target a different stage than the profile's configured one; it cannot be combined with `rw auth login` or `rw auth logout`. It also does not act as an override on `rw config profile add` or `rw config profile set` — those commands have their own local `-g`/`--stage` flag sharing the same arg id, so `-g`/`--stage` anywhere on those commands instead sets and persists the profile's stored stage. Do not use `--stage` expecting a one-off override on those two commands; it will silently mutate stored config.
 
 ## Commands
 

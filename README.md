@@ -27,7 +27,8 @@ RW_VERSION=1.2.3 bash -c "$(curl -fsSL https://raw.githubusercontent.com/Roundin
 | Flag           | Short | Description                                                            |
 |----------------|-------|------------------------------------------------------------------------|
 | `--profile`    | `-p`  | Named profile to use                                                   |
-| `--auth`       | `-A`  | Use stored credentials from another profile (overrides only the auth) |
+| `--auth`       | `-A`  | Use stored credentials from another profile (overrides only the auth)  |
+| `--stage`      | `-g`  | Stage to target, overriding the profile's configured stage             |
 | `--config-dir` | `-c`  | Configuration directory                                                |
 | `--json`       |       | Change all output to JSON                                              |
 
@@ -47,6 +48,31 @@ rw config profile set mercy -o new-org  # Update organization for a profile
 rw config profile set mercy -g sandbox  # Update stage for a profile
 rw config profile auth mercy            # Save basic auth credentials for a profile (see below)
 ```
+
+#### Overriding the stage
+
+A profile pins an organization to one stage. Override it for a single invocation
+with `--stage` (`-g`):
+
+```sh
+rw -g local workspaces list          # Target localhost with the active profile
+rw clinicians show me -g sandbox     # The flag is global, so it works here too
+```
+
+The override changes only which host is called. Credentials still come from the
+profile (or from `--auth`), and token refresh still uses the profile's stored
+stage. Because `prod` and `sandbox` authenticate against a different tenant than
+`qa`, `dev`, and `local`, an override that crosses that boundary sends a token the
+target rejects, producing a 401 — overrides within a group work.
+
+The exception is `rw config profile add` and `rw config profile set`, which
+each have their own local `-g` / `--stage` flag for the stage to store in the
+profile. Because it shares the arg id with the global flag, `-g`/`--stage`
+anywhere on those two commands sets the profile's stored stage — it does not
+act as a per-invocation override there.
+
+`--stage` cannot be combined with `rw auth login` or `rw auth logout`, which
+create and remove a specific profile's credentials.
 
 #### Adding a profile
 

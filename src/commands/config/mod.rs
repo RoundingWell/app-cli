@@ -18,7 +18,8 @@ use anyhow::Result;
 use std::path::Path;
 
 use crate::cli::{
-    ConfigArgs, ConfigCommands, ConfigDefaultCommands, ConfigProfileCommands, ConfigUpdatesCommands,
+    ConfigArgs, ConfigCommands, ConfigDefaultCommands, ConfigProfileCommands,
+    ConfigUpdatesCommands, Stage,
 };
 use crate::config::Config;
 use crate::output::Output;
@@ -29,10 +30,13 @@ pub async fn dispatch(
     cfg_path: &Path,
     config_dir: &Path,
     profile_override: Option<&str>,
+    stage_override: Option<&Stage>,
     out: &Output,
 ) -> Result<()> {
     match args.command {
-        ConfigCommands::Doctor => doctor::doctor(config, config_dir, profile_override, out).await,
+        ConfigCommands::Doctor => {
+            doctor::doctor(config, config_dir, profile_override, stage_override, out).await
+        }
         ConfigCommands::Profile(profile_args) => match profile_args.command {
             ConfigProfileCommands::List => {
                 profile_list(config, out);

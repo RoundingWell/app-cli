@@ -15,6 +15,7 @@ use std::time::Instant;
 
 use crate::api::resolve_api;
 use crate::auth_cache::{load_auth_cache, AuthCache};
+use crate::cli::Stage;
 use crate::config::Config;
 use crate::output::{CommandOutput, Output};
 
@@ -70,9 +71,10 @@ pub async fn doctor(
     config: &Config,
     config_dir: &Path,
     profile_override: Option<&str>,
+    stage_override: Option<&Stage>,
     out: &Output,
 ) -> Result<()> {
-    let report = run_checks(config, config_dir, profile_override).await;
+    let report = run_checks(config, config_dir, profile_override, stage_override).await;
     out.print(&report);
     if !report.ok {
         return Err(anyhow!("doctor checks failed"));
@@ -86,14 +88,15 @@ pub(crate) async fn run_checks(
     config: &Config,
     config_dir: &Path,
     profile_override: Option<&str>,
+    stage_override: Option<&Stage>,
 ) -> DoctorOutput {
     let mut checks: Vec<CheckResult> = Vec::with_capacity(4);
 
     // 1. Profile.
-    let profile = check_profile(config, profile_override);
+    let profile = check_profile(config, profile_override, stage_override);
     let profile_ok = profile.status == CheckStatus::Pass;
     let profile_ctx = if profile_ok {
-        resolve_profile_ctx(config, profile_override)
+        resolve_profile_ctx(config, profile_override, stage_override)
     } else {
         None
     };
@@ -138,9 +141,13 @@ struct ProfileCtx {
     base_url: String,
 }
 
-fn resolve_profile_ctx(config: &Config, profile_override: Option<&str>) -> Option<ProfileCtx> {
+fn resolve_profile_ctx(
+    config: &Config,
+    profile_override: Option<&str>,
+    stage_override: Option<&Stage>,
+) -> Option<ProfileCtx> {
     let (profile, organization, stage) =
-        crate::config::resolve_profile(config, profile_override).ok()?;
+        crate::config::resolve_profile(config, profile_override, stage_override).ok()?;
     let base_url = resolve_api(&organization, &stage);
     Some(ProfileCtx {
         profile,
@@ -158,8 +165,12 @@ fn skip(name: &str, reason: &str) -> CheckResult {
     }
 }
 
-fn check_profile(config: &Config, profile_override: Option<&str>) -> CheckResult {
-    match crate::config::resolve_profile(config, profile_override) {
+fn check_profile(
+    config: &Config,
+    profile_override: Option<&str>,
+    stage_override: Option<&Stage>,
+) -> CheckResult {
+    match crate::config::resolve_profile(config, profile_override, stage_override) {
         Ok((name, organization, stage)) => {
             let mut details = BTreeMap::new();
             details.insert("profile".to_string(), serde_json::json!(name));
@@ -366,7 +377,6 @@ fn remaining(expires_at: i64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cli::Stage;
     use crate::config::Profile;
     use mockito::Server;
 
@@ -396,7 +406,7 @@ mod tests {
     #[test]
     fn test_check_profile_pass() {
         let config = cfg_with_default(Stage::Prod);
-        let r = check_profile(&config, None);
+        let r = check_profile(&config, None, None);
         assert_eq!(r.status, CheckStatus::Pass);
         assert!(r.message.contains("demo"));
         assert!(r.message.contains("demonstration"));
@@ -406,7 +416,7 @@ mod tests {
     #[test]
     fn test_check_profile_fails_without_default() {
         let config = Config::default();
-        let r = check_profile(&config, None);
+        let r = check_profile(&config, None, None);
         assert_eq!(r.status, CheckStatus::Fail);
         assert!(r.message.contains("no profile selected"));
     }
@@ -414,7 +424,7 @@ mod tests {
     #[test]
     fn test_check_profile_fails_for_unknown_override() {
         let config = cfg_with_default(Stage::Prod);
-        let r = check_profile(&config, Some("nope"));
+        let r = check_profile(&config, Some("nope"), None);
         assert_eq!(r.status, CheckStatus::Fail);
         assert!(r.message.contains("nope"));
     }
@@ -631,7 +641,7 @@ mod tests {
     async fn test_run_checks_no_profile_cascades_skips() {
         let dir = tempfile::TempDir::new().unwrap();
         let config = Config::default();
-        let report = run_checks(&config, dir.path(), None).await;
+        let report = run_checks(&config, dir.path(), None, None).await;
         assert!(!report.ok);
         assert_eq!(report.checks.len(), 4);
         assert_eq!(report.checks[0].status, CheckStatus::Fail);
@@ -644,7 +654,7 @@ mod tests {
     async fn test_run_checks_no_auth_skips_api_but_runs_defaults() {
         let dir = tempfile::TempDir::new().unwrap();
         let config = cfg_with_default(Stage::Prod);
-        let report = run_checks(&config, dir.path(), None).await;
+        let report = run_checks(&config, dir.path(), None, None).await;
         assert!(!report.ok);
         assert_eq!(report.checks[0].status, CheckStatus::Pass);
         assert_eq!(report.checks[1].status, CheckStatus::Fail);
@@ -657,7 +667,7 @@ mod tests {
     async fn test_doctor_output_plain_format() {
         let dir = tempfile::TempDir::new().unwrap();
         let config = Config::default();
-        let report = run_checks(&config, dir.path(), None).await;
+        let report = run_checks(&config, dir.path(), None, None).await;
         let plain = report.plain();
         // Each check renders one line with a glyph + name.
         assert_eq!(plain.lines().count(), 4);
@@ -671,7 +681,7 @@ mod tests {
     async fn test_doctor_output_json_shape() {
         let dir = tempfile::TempDir::new().unwrap();
         let config = Config::default();
-        let report = run_checks(&config, dir.path(), None).await;
+        let report = run_checks(&config, dir.path(), None, None).await;
         let json = serde_json::to_value(&report).unwrap();
         assert_eq!(json["ok"], false);
         assert!(json["checks"].is_array());
@@ -684,7 +694,49 @@ mod tests {
         let dir = tempfile::TempDir::new().unwrap();
         let config = Config::default();
         let out = Output { json: true };
-        let result = doctor(&config, dir.path(), None, &out).await;
+        let result = doctor(&config, dir.path(), None, None, &out).await;
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_check_profile_reports_stage_override() {
+        let config = cfg_with_default(Stage::Prod);
+        let r = check_profile(&config, None, Some(&Stage::Local));
+        assert_eq!(r.status, CheckStatus::Pass);
+        assert!(r.message.contains("local"));
+        assert_eq!(r.details["stage"], serde_json::json!("local"));
+    }
+
+    #[test]
+    fn test_check_profile_without_override_reports_configured_stage() {
+        let config = cfg_with_default(Stage::Prod);
+        let r = check_profile(&config, None, None);
+        assert_eq!(r.status, CheckStatus::Pass);
+        assert_eq!(r.details["stage"], serde_json::json!("prod"));
+    }
+
+    #[test]
+    fn test_resolve_profile_ctx_honors_stage_override() {
+        let config = cfg_with_default(Stage::Prod);
+        let ctx = resolve_profile_ctx(&config, None, Some(&Stage::Local)).unwrap();
+        assert_eq!(ctx.profile, "demo");
+        assert_eq!(ctx.base_url, "http://localhost:8080");
+    }
+
+    #[test]
+    fn test_resolve_profile_ctx_without_override_uses_configured_stage() {
+        let config = cfg_with_default(Stage::Prod);
+        let ctx = resolve_profile_ctx(&config, None, None).unwrap();
+        assert_eq!(ctx.base_url, "https://demonstration.roundingwell.com/api");
+    }
+
+    #[tokio::test]
+    async fn test_run_checks_profile_check_reflects_stage_override() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let config = cfg_with_default(Stage::Prod);
+        let report = run_checks(&config, dir.path(), None, Some(&Stage::Local)).await;
+        let profile = report.checks.iter().find(|c| c.name == "profile").unwrap();
+        assert_eq!(profile.status, CheckStatus::Pass);
+        assert_eq!(profile.details["stage"], serde_json::json!("local"));
     }
 }
