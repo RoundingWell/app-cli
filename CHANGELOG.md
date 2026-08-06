@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-08-06
+
+### Added
+
+- Global `-g`/`--stage` flag to override the active profile's configured stage for a single invocation
+
 ### Removed
 
 - ⚠️ `rw api --jq`/`-q` is removed; pipe output to an external `jq` instead
@@ -136,7 +142,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Initial release of the `rw` CLI tool
 
-[Unreleased]: https://github.com/RoundingWell/app-cli/compare/0.12.0...HEAD
+[Unreleased]: https://github.com/RoundingWell/app-cli/compare/0.13.0...HEAD
+[0.13.0]: https://github.com/RoundingWell/app-cli/compare/0.12.0...0.13.0
 [0.12.0]: https://github.com/RoundingWell/app-cli/compare/0.11.0...0.12.0
 [0.11.0]: https://github.com/RoundingWell/app-cli/compare/0.10.1...0.11.0
 [0.10.1]: https://github.com/RoundingWell/app-cli/compare/0.10.0...0.10.1
