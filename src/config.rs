@@ -104,15 +104,22 @@ pub fn save_config_to(config: &Config, path: &std::path::Path) -> Result<()> {
 
 /// Resolves the effective profile name, organization, and stage.
 /// Uses `--profile` if given, then `default` from config.
-/// Returns an error if neither is set.
-pub fn resolve_profile(config: &Config, profile: Option<&str>) -> Result<(String, String, Stage)> {
+/// When `stage_override` is set (from `--stage`), it replaces the profile's
+/// configured stage; profile lookup and its errors happen first either way.
+/// Returns an error if neither `--profile` nor `default` is set.
+pub fn resolve_profile(
+    config: &Config,
+    profile: Option<&str>,
+    stage_override: Option<&Stage>,
+) -> Result<(String, String, Stage)> {
     let effective_profile = profile.or(config.default.as_deref());
     if let Some(name) = effective_profile {
         let p = config
             .profiles
             .get(name)
             .with_context(|| format!("profile \"{}\" not found in config", name))?;
-        Ok((name.to_string(), p.organization.clone(), p.stage.clone()))
+        let stage = stage_override.cloned().unwrap_or_else(|| p.stage.clone());
+        Ok((name.to_string(), p.organization.clone(), stage))
     } else {
         anyhow::bail!(
             "no profile selected; run `rw config profile use <name>` to set a default, or pass --profile"
@@ -166,7 +173,7 @@ mod tests {
                 default: None,
             },
         );
-        let (profile, organization, stage) = resolve_profile(&config, Some("demo")).unwrap();
+        let (profile, organization, stage) = resolve_profile(&config, Some("demo"), None).unwrap();
         assert_eq!(profile, "demo");
         assert_eq!(organization, "demonstration");
         assert_eq!(stage, Stage::Prod);
@@ -184,7 +191,7 @@ mod tests {
             },
         );
         config.default = Some("demo".to_string());
-        let (profile, organization, stage) = resolve_profile(&config, None).unwrap();
+        let (profile, organization, stage) = resolve_profile(&config, None, None).unwrap();
         assert_eq!(profile, "demo");
         assert_eq!(organization, "demonstration");
         assert_eq!(stage, Stage::Sandbox);
@@ -193,7 +200,7 @@ mod tests {
     #[test]
     fn test_resolve_no_profile_errors() {
         let config = Config::default();
-        assert!(resolve_profile(&config, None).is_err());
+        assert!(resolve_profile(&config, None, None).is_err());
     }
 
     #[test]
@@ -348,5 +355,37 @@ mod tests {
         );
         let result = resolve_auth_profile(&config, "demo", Some("demo")).unwrap();
         assert_eq!(result, "demo");
+    }
+
+    #[test]
+    fn test_resolve_profile_stage_override_replaces_configured_stage() {
+        let mut config = Config::default();
+        config.profiles.insert(
+            "demo".to_string(),
+            Profile {
+                organization: "demonstration".to_string(),
+                stage: Stage::Prod,
+                default: None,
+            },
+        );
+        let (profile, organization, stage) =
+            resolve_profile(&config, Some("demo"), Some(&Stage::Local)).unwrap();
+        assert_eq!(profile, "demo");
+        assert_eq!(organization, "demonstration");
+        assert_eq!(stage, Stage::Local);
+    }
+
+    #[test]
+    fn test_resolve_profile_stage_override_does_not_mask_unknown_profile() {
+        let config = Config::default();
+        let err = resolve_profile(&config, Some("nope"), Some(&Stage::Local)).unwrap_err();
+        assert!(err.to_string().contains("not found"));
+    }
+
+    #[test]
+    fn test_resolve_profile_stage_override_does_not_mask_missing_profile() {
+        let config = Config::default();
+        let err = resolve_profile(&config, None, Some(&Stage::Local)).unwrap_err();
+        assert!(err.to_string().contains("no profile selected"));
     }
 }

@@ -16,6 +16,10 @@ pub struct Cli {
     #[arg(short = 'A', long, value_parser = validate_slug, global = true)]
     pub auth: Option<String>,
 
+    /// Stage to target for this invocation, overriding the profile's configured stage.
+    #[arg(short = 'g', long, global = true)]
+    pub stage: Option<Stage>,
+
     /// Output results as JSON.
     #[arg(long, global = true)]
     pub json: bool,
@@ -544,5 +548,77 @@ mod tests {
         // The flag is global, so it works after the subcommand too.
         let cli = Cli::try_parse_from(["rw", "auth", "status", "-A", "mercy"]).unwrap();
         assert_eq!(cli.auth.as_deref(), Some("mercy"));
+    }
+
+    #[test]
+    fn test_stage_flag_long() {
+        use clap::Parser;
+        let cli = Cli::try_parse_from(["rw", "--stage", "dev", "auth", "status"]).unwrap();
+        assert_eq!(cli.stage, Some(Stage::Dev));
+    }
+
+    #[test]
+    fn test_stage_flag_short() {
+        use clap::Parser;
+        let cli = Cli::try_parse_from(["rw", "-g", "local", "auth", "status"]).unwrap();
+        assert_eq!(cli.stage, Some(Stage::Local));
+    }
+
+    #[test]
+    fn test_stage_flag_default_none() {
+        use clap::Parser;
+        let cli = Cli::try_parse_from(["rw", "auth", "status"]).unwrap();
+        assert!(cli.stage.is_none());
+    }
+
+    #[test]
+    fn test_stage_flag_rejects_unknown_stage() {
+        use clap::Parser;
+        let err = Cli::try_parse_from(["rw", "-g", "staging", "auth", "status"]).unwrap_err();
+        assert!(err.to_string().contains("invalid value"));
+    }
+
+    #[test]
+    fn test_stage_flag_propagates_to_subcommands() {
+        use clap::Parser;
+        // The flag is global, so it works after the subcommand too.
+        let cli = Cli::try_parse_from(["rw", "clinicians", "show", "me", "-g", "dev"]).unwrap();
+        assert_eq!(cli.stage, Some(Stage::Dev));
+    }
+
+    #[test]
+    fn test_config_profile_add_keeps_its_own_stage_flag() {
+        use clap::Parser;
+        // clap skips propagating a global arg into a subcommand that already
+        // declares the same arg id, so `add` keeps its local `-g`.
+        let cli =
+            Cli::try_parse_from(["rw", "config", "profile", "add", "demo", "-g", "prod"]).unwrap();
+        let Commands::Config(config_args) = cli.command else {
+            panic!("expected the config subcommand");
+        };
+        let ConfigCommands::Profile(profile_args) = config_args.command else {
+            panic!("expected the profile subcommand");
+        };
+        let ConfigProfileCommands::Add(add_args) = profile_args.command else {
+            panic!("expected the add subcommand");
+        };
+        assert_eq!(add_args.stage, Some(Stage::Prod));
+    }
+
+    #[test]
+    fn test_config_profile_set_keeps_its_own_stage_flag() {
+        use clap::Parser;
+        let cli = Cli::try_parse_from(["rw", "config", "profile", "set", "demo", "-g", "sandbox"])
+            .unwrap();
+        let Commands::Config(config_args) = cli.command else {
+            panic!("expected the config subcommand");
+        };
+        let ConfigCommands::Profile(profile_args) = config_args.command else {
+            panic!("expected the profile subcommand");
+        };
+        let ConfigProfileCommands::Set(set_args) = profile_args.command else {
+            panic!("expected the set subcommand");
+        };
+        assert_eq!(set_args.stage, Some(Stage::Sandbox));
     }
 }
