@@ -23,7 +23,7 @@ uuid = { version = "1", features = ["v4"] }
 rpassword = "7"
 json_dotpath = "1"
 self_update = { version = "1.0.0-rc.6", default-features = false, features = ["reqwest", "rustls", "github", "archive-tar", "compression-tar-gz"] }
-validator = { version = "0.20", features = ["derive"] }
+validator = { version = "0.21", features = ["derive"] }
 regex = "1"
 tabled = "0.21.0"
 
