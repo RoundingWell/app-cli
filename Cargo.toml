@@ -17,7 +17,7 @@ tokio = { version = "1", features = ["full"] }
 anyhow = "1"
 base64 = "0.23"
 dirs = "6"
-write_atomic = "0.7"
+write_atomic = "0.8"
 webbrowser = "1"
 uuid = { version = "1", features = ["v4"] }
 rpassword = "7"
