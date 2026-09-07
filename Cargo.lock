@@ -2927,11 +2927,10 @@ checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
 
 [[package]]
 name = "write_atomic"
-version = "0.7.1"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9eba5b2d53731b5db1531ca5f13d660f54117e48750645411712c91a0d007ba4"
+checksum = "9ad917094fba03489aa25ff14dc8efc1ffcae43c02b632723525222cadac4c55"
 dependencies = [
- "filetime",
  "tempfile",
 ]
 
