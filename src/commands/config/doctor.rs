@@ -138,7 +138,8 @@ pub(crate) async fn run_checks(
 struct ProfileCtx {
     profile: String,
     organization: String,
-    stage: Stage,
+    /// The profile's saved stage (not the `-g` override): where its credentials are issued.
+    auth_stage: Stage,
     base_url: String,
 }
 
@@ -150,10 +151,11 @@ fn resolve_profile_ctx(
     let (profile, organization, stage) =
         crate::config::resolve_profile(config, profile_override, stage_override).ok()?;
     let base_url = resolve_api(&organization, &stage);
+    let auth_stage = config.profiles.get(&profile)?.stage.clone();
     Some(ProfileCtx {
         profile,
         organization,
-        stage,
+        auth_stage,
         base_url,
     })
 }
@@ -290,7 +292,7 @@ async fn check_api(ctx: &ProfileCtx, auth: &AuthCache, config_dir: &Path) -> Che
             match crate::commands::auth::client_credentials_access_token(
                 config_dir,
                 &ctx.profile,
-                ctx.stage.workos_config().token_url,
+                ctx.auth_stage.workos_config().token_url,
                 auth.clone(),
             )
             .await
@@ -606,7 +608,7 @@ mod tests {
         let ctx = ProfileCtx {
             profile: "demo".to_string(),
             organization: "demonstration".to_string(),
-            stage: Stage::Prod,
+            auth_stage: Stage::Prod,
             base_url: server.url(),
         };
         let auth = AuthCache::Bearer {
@@ -633,7 +635,7 @@ mod tests {
         let ctx = ProfileCtx {
             profile: "demo".to_string(),
             organization: "demonstration".to_string(),
-            stage: Stage::Prod,
+            auth_stage: Stage::Prod,
             base_url: server.url(),
         };
         let auth = AuthCache::Bearer {
@@ -662,7 +664,7 @@ mod tests {
         let ctx = ProfileCtx {
             profile: "demo".to_string(),
             organization: "demonstration".to_string(),
-            stage: Stage::Prod,
+            auth_stage: Stage::Prod,
             base_url: server.url(),
         };
         let auth = AuthCache::Basic {
@@ -687,7 +689,7 @@ mod tests {
         let ctx = ProfileCtx {
             profile: "demo".to_string(),
             organization: "demonstration".to_string(),
-            stage: Stage::Prod,
+            auth_stage: Stage::Prod,
             base_url: format!("http://{}", addr),
         };
         let auth = AuthCache::Bearer {
@@ -786,6 +788,15 @@ mod tests {
         let ctx = resolve_profile_ctx(&config, None, Some(&Stage::Local)).unwrap();
         assert_eq!(ctx.profile, "demo");
         assert_eq!(ctx.base_url, "http://localhost:8080");
+    }
+
+    #[test]
+    fn test_resolve_profile_ctx_auth_stage_ignores_stage_override() {
+        // Credentials belong to the profile's saved stage, as in real commands.
+        let config = cfg_with_default(Stage::Prod);
+        let ctx = resolve_profile_ctx(&config, None, Some(&Stage::Dev)).unwrap();
+        assert_eq!(ctx.auth_stage, Stage::Prod);
+        assert_eq!(ctx.base_url, "https://demonstration.roundingwell.dev/api");
     }
 
     #[test]
