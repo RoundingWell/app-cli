@@ -115,11 +115,29 @@ impl CommandOutput for ProfileRmOutput {
 #[derive(Serialize)]
 pub struct ProfileAuthOutput {
     pub name: String,
+    #[serde(skip)]
+    pub kind: &'static str,
 }
 
 impl CommandOutput for ProfileAuthOutput {
     fn plain(&self) -> String {
-        format!("Basic auth credentials saved for profile '{}'.", self.name)
+        format!(
+            "{} credentials saved for profile '{}'.",
+            self.kind, self.name
+        )
+    }
+}
+
+/// Returns `value` if non-empty, prompts when absent, and rejects an empty value.
+fn required(
+    value: Option<String>,
+    label: &str,
+    prompt: impl FnOnce() -> Result<String>,
+) -> Result<String> {
+    match value {
+        Some(v) if v.is_empty() => anyhow::bail!("{} cannot be empty", label),
+        Some(v) => Ok(v),
+        None => prompt(),
     }
 }
 
@@ -297,40 +315,40 @@ pub fn profile_auth(
         anyhow::bail!("profile '{}' does not exist", args.name);
     }
 
-    if out.json && (args.username.is_none() || args.password.is_none()) {
-        anyhow::bail!("cannot use interactive mode with --json; provide --username and --password");
-    }
+    let client_credentials = args.client_id.is_some() || args.client_secret.is_some();
 
-    let username = args
-        .username
-        .map(|u| {
-            if u.is_empty() {
-                anyhow::bail!("username cannot be empty")
-            } else {
-                Ok(u)
-            }
-        })
-        .unwrap_or_else(|| p::text("Username"))?;
-
-    let pw = args
-        .password
-        .map(|p| {
-            if p.is_empty() {
-                anyhow::bail!("password cannot be empty")
-            } else {
-                Ok(p)
-            }
-        })
-        .unwrap_or_else(p::password)?;
-
-    let cache = AuthCache::Basic {
-        username,
-        password: pw,
+    let (cache, kind) = if client_credentials {
+        if out.json && (args.client_id.is_none() || args.client_secret.is_none()) {
+            anyhow::bail!(
+                "cannot use interactive mode with --json; provide --client-id and --client-secret"
+            );
+        }
+        let cache = AuthCache::ClientCredentials {
+            client_id: required(args.client_id, "client id", || p::text("Client ID"))?,
+            client_secret: required(args.client_secret, "client secret", || {
+                p::secret("Client secret")
+            })?,
+            access_token: None,
+            expires_at: None,
+        };
+        (cache, "Client")
+    } else {
+        if out.json && (args.username.is_none() || args.password.is_none()) {
+            anyhow::bail!(
+                "cannot use interactive mode with --json; provide --username and --password"
+            );
+        }
+        let cache = AuthCache::Basic {
+            username: required(args.username, "username", || p::text("Username"))?,
+            password: required(args.password, "password", p::password)?,
+        };
+        (cache, "Basic auth")
     };
     save_auth_cache(config_dir, &args.name, &cache)?;
 
     out.print(&ProfileAuthOutput {
         name: args.name.clone(),
+        kind,
     });
     Ok(())
 }
@@ -732,6 +750,8 @@ mod tests {
             name: "demo".to_string(),
             username: Some("alice".to_string()),
             password: Some("secret".to_string()),
+            client_id: None,
+            client_secret: None,
         };
         profile_auth(args, &config, dir.path(), &out_plain()).unwrap();
         let cache = load_auth_cache(dir.path(), "demo").unwrap().unwrap();
@@ -744,6 +764,85 @@ mod tests {
         }
     }
 
+    fn client_args(id: Option<&str>, secret: Option<&str>) -> ConfigProfileAuthArgs {
+        ConfigProfileAuthArgs {
+            name: "demo".to_string(),
+            username: None,
+            password: None,
+            client_id: id.map(str::to_string),
+            client_secret: secret.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn test_profile_auth_saves_client_credentials_cache() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let config = config_with_profile("demo", "mercy", Stage::Prod);
+        profile_auth(
+            client_args(Some("client_123"), Some("sec")),
+            &config,
+            dir.path(),
+            &out_plain(),
+        )
+        .unwrap();
+        match load_auth_cache(dir.path(), "demo").unwrap().unwrap() {
+            AuthCache::ClientCredentials {
+                client_id,
+                client_secret,
+                access_token,
+                expires_at,
+            } => {
+                assert_eq!(client_id, "client_123");
+                assert_eq!(client_secret, "sec");
+                assert!(access_token.is_none());
+                assert!(expires_at.is_none());
+            }
+            _ => panic!("expected client credentials cache"),
+        }
+    }
+
+    #[test]
+    fn test_profile_auth_client_json_mode_requires_both() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let config = config_with_profile("demo", "mercy", Stage::Prod);
+        let err = profile_auth(
+            client_args(Some("client_123"), None),
+            &config,
+            dir.path(),
+            &out_json(),
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("--client-id and --client-secret"));
+    }
+
+    #[test]
+    fn test_profile_auth_rejects_empty_client_id() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let config = config_with_profile("demo", "mercy", Stage::Prod);
+        let err = profile_auth(
+            client_args(Some(""), Some("sec")),
+            &config,
+            dir.path(),
+            &out_plain(),
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("client id cannot be empty"));
+    }
+
+    #[test]
+    fn test_profile_auth_rejects_empty_client_secret() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let config = config_with_profile("demo", "mercy", Stage::Prod);
+        let err = profile_auth(
+            client_args(Some("client_123"), Some("")),
+            &config,
+            dir.path(),
+            &out_plain(),
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("client secret cannot be empty"));
+    }
+
     #[test]
     fn test_profile_auth_errors_when_profile_not_found() {
         let dir = tempfile::TempDir::new().unwrap();
@@ -752,6 +851,8 @@ mod tests {
             name: "missing".to_string(),
             username: Some("alice".to_string()),
             password: Some("secret".to_string()),
+            client_id: None,
+            client_secret: None,
         };
         let err = profile_auth(args, &config, dir.path(), &out_plain()).unwrap_err();
         assert!(err.to_string().contains("does not exist"));
@@ -765,6 +866,8 @@ mod tests {
             name: "demo".to_string(),
             username: None,
             password: Some("secret".to_string()),
+            client_id: None,
+            client_secret: None,
         };
         let err = profile_auth(args, &config, dir.path(), &out_json()).unwrap_err();
         assert!(err.to_string().contains("--json"));
@@ -778,6 +881,8 @@ mod tests {
             name: "demo".to_string(),
             username: Some("".to_string()),
             password: Some("secret".to_string()),
+            client_id: None,
+            client_secret: None,
         };
         let err = profile_auth(args, &config, dir.path(), &out_plain()).unwrap_err();
         assert!(err.to_string().contains("username cannot be empty"));
@@ -791,6 +896,8 @@ mod tests {
             name: "demo".to_string(),
             username: Some("alice".to_string()),
             password: Some("".to_string()),
+            client_id: None,
+            client_secret: None,
         };
         let err = profile_auth(args, &config, dir.path(), &out_plain()).unwrap_err();
         assert!(err.to_string().contains("password cannot be empty"));
