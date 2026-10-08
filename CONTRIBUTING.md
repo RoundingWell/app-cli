@@ -78,7 +78,7 @@ src/
 ├── cli.rs             clap argument structs + Stage + slug validation
 ├── config.rs          Config / Profile / AppContext + on-disk persistence
 ├── api.rs             stage → API URL resolution
-├── auth_cache.rs      AuthCache (Bearer | Basic) + 0600 on-disk store
+├── auth_cache.rs      AuthCache (ClientCredentials | Bearer | Basic) + 0600 on-disk store
 ├── http.rs            ApiClient: auth-attached reqwest wrapper
 ├── jsonapi.rs         generic Document / Resource / Single / List envelopes
 ├── prompt.rs          interactive yes_no / text / stage / organization prompts

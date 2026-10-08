@@ -46,7 +46,7 @@ rw config profile rm mercy              # Remove the "mercy" profile (prompts fo
 rw config profile rm mercy --yes        # Remove without prompting
 rw config profile set mercy -o new-org  # Update organization for a profile
 rw config profile set mercy -g sandbox  # Update stage for a profile
-rw config profile auth mercy            # Save basic auth credentials for a profile (see below)
+rw config profile auth mercy            # Save credentials for a profile (see below)
 ```
 
 #### Overriding the stage
@@ -130,6 +130,24 @@ rw config profile auth mercy --username alice \
 |--------------|-------|-------------------------|
 | `--username` | `-u`  | Username for basic auth |
 | `--password` | `-P`  | Password for basic auth |
+
+#### Using Client Credentials
+
+For non-interactive use (CI, scripts), store a client ID and secret instead of logging in:
+
+```sh
+rw config profile auth mercy --client-id client_123            # Secret prompted securely
+rw config profile auth mercy --client-id client_123 \
+  --client-secret secret                                       # Fully non-interactive
+```
+
+| Flag              | Description                                                   |
+|-------------------|---------------------------------------------------------------|
+| `--client-id`     | Client ID (cannot be combined with `--username`/`--password`) |
+| `--client-secret` | Client secret (prompted securely if not provided)             |
+
+`rw` exchanges the credentials for an access token on first use and caches it in
+`~/.config/rw/auth/{profile}.json`, renewing it automatically.
 
 #### Diagnostics
 
