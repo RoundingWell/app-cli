@@ -147,6 +147,7 @@ pub fn profile_show(config: &Config, config_dir: &Path, out: &Output) -> Result<
     let auth = match load_auth_cache(config_dir, name)? {
         Some(AuthCache::Basic { .. }) => Some("basic".to_string()),
         Some(AuthCache::Bearer { .. }) => Some("bearer".to_string()),
+        Some(AuthCache::ClientCredentials { .. }) => Some("client_credentials".to_string()),
         None => None,
     };
 
@@ -485,6 +486,26 @@ mod tests {
         .unwrap();
         let output = profile_show(&config, dir.path(), &out_plain()).unwrap();
         assert_eq!(output.auth, Some("bearer".to_string()));
+    }
+
+    #[test]
+    fn test_profile_show_auth_type_client_credentials() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let mut config = config_with_profile("demo", "mercy", Stage::Prod);
+        config.default = Some("demo".to_string());
+        save_auth_cache(
+            dir.path(),
+            "demo",
+            &AuthCache::ClientCredentials {
+                client_id: "id".to_string(),
+                client_secret: "sec".to_string(),
+                access_token: None,
+                expires_at: None,
+            },
+        )
+        .unwrap();
+        let output = profile_show(&config, dir.path(), &out_plain()).unwrap();
+        assert_eq!(output.auth, Some("client_credentials".to_string()));
     }
 
     #[test]

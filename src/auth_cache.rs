@@ -6,6 +6,17 @@ use std::path::{Path, PathBuf};
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(untagged)]
 pub enum AuthCache {
+    /// Declared before `Bearer`: a cached token gives it the same `access_token` +
+    /// `expires_at` fields, and untagged enums take the first variant that matches.
+    ClientCredentials {
+        client_id: String,
+        client_secret: String,
+        /// Access token from the last exchange, if any.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        access_token: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        expires_at: Option<i64>,
+    },
     Bearer {
         access_token: String,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -20,10 +31,17 @@ pub enum AuthCache {
 }
 
 impl AuthCache {
-    /// Returns true if this is a bearer token that is expired or expires within 60 seconds.
+    /// Returns true if this is a bearer or client-credentials token that is missing,
+    /// expired, or expires within 60 seconds.
     pub fn is_expired(&self) -> bool {
         match self {
-            AuthCache::Bearer { expires_at, .. } => unix_now() >= expires_at - 60,
+            AuthCache::ClientCredentials {
+                access_token: Some(_),
+                expires_at: Some(expires_at),
+                ..
+            }
+            | AuthCache::Bearer { expires_at, .. } => unix_now() >= expires_at - 60,
+            AuthCache::ClientCredentials { .. } => true,
             AuthCache::Basic { .. } => false,
         }
     }
@@ -217,6 +235,70 @@ mod tests {
             }
             _ => panic!("expected basic"),
         }
+    }
+
+    fn client_credentials(token: Option<&str>, expires_at: Option<i64>) -> AuthCache {
+        AuthCache::ClientCredentials {
+            client_id: "id".to_string(),
+            client_secret: "sec".to_string(),
+            access_token: token.map(str::to_string),
+            expires_at,
+        }
+    }
+
+    #[test]
+    fn test_client_credentials_without_token_is_expired() {
+        assert!(client_credentials(None, None).is_expired());
+    }
+
+    #[test]
+    fn test_client_credentials_fresh_token_not_expired() {
+        assert!(!client_credentials(Some("t"), Some(unix_now() + 3600)).is_expired());
+    }
+
+    #[test]
+    fn test_client_credentials_token_in_grace_period_is_expired() {
+        assert!(client_credentials(Some("t"), Some(unix_now() + 30)).is_expired());
+    }
+
+    #[test]
+    fn test_client_credentials_with_cached_token_roundtrips_as_client_credentials() {
+        // Must not be swallowed by `Bearer`, which also has access_token + expires_at.
+        let json = serde_json::to_string(&client_credentials(Some("t"), Some(9999999999))).unwrap();
+        match serde_json::from_str::<AuthCache>(&json).unwrap() {
+            AuthCache::ClientCredentials {
+                client_id,
+                client_secret,
+                access_token,
+                expires_at,
+            } => {
+                assert_eq!(client_id, "id");
+                assert_eq!(client_secret, "sec");
+                assert_eq!(access_token.as_deref(), Some("t"));
+                assert_eq!(expires_at, Some(9999999999));
+            }
+            other => panic!("expected client credentials, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_client_credentials_without_token_omits_token_fields() {
+        let json = serde_json::to_string(&client_credentials(None, None)).unwrap();
+        assert!(!json.contains("access_token"));
+        assert!(!json.contains("expires_at"));
+        assert!(matches!(
+            serde_json::from_str::<AuthCache>(&json).unwrap(),
+            AuthCache::ClientCredentials { .. }
+        ));
+    }
+
+    #[test]
+    fn test_bearer_json_still_parses_as_bearer() {
+        let json = r#"{"access_token":"a","refresh_token":"r","expires_at":9999999999}"#;
+        assert!(matches!(
+            serde_json::from_str::<AuthCache>(json).unwrap(),
+            AuthCache::Bearer { .. }
+        ));
     }
 
     #[test]

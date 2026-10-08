@@ -1,5 +1,6 @@
 use anyhow::{bail, Context, Result};
 use serde::Serialize;
+use std::path::Path;
 use std::time::Duration;
 use tokio::time::sleep;
 
@@ -72,6 +73,8 @@ pub struct StatusOutput {
     pub expired: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub username: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_id: Option<String>,
     #[serde(skip)]
     pub profile: String,
 }
@@ -101,6 +104,11 @@ impl CommandOutput for StatusOutput {
                     format!("✓ Authenticated using profile '{}' (basic).", self.profile)
                 }
             }
+            (true, Some("client_credentials"), _) => format!(
+                "✓ Authenticated using profile '{}' (client credentials, client: {}).",
+                self.profile,
+                self.client_id.as_deref().unwrap_or("unknown")
+            ),
             _ => format!("✓ Authenticated using profile '{}'.", self.profile),
         }
     }
@@ -249,6 +257,17 @@ pub fn status(ctx: &AppContext, out: &Output) -> Result<()> {
                 authenticated: true,
                 expired: cache.is_expired(),
                 username: None,
+                client_id: None,
+                profile: ctx.auth_profile.clone(),
+            });
+        }
+        Some(ref cache @ AuthCache::ClientCredentials { ref client_id, .. }) => {
+            out.print(&StatusOutput {
+                auth_type: Some("client_credentials".to_string()),
+                authenticated: true,
+                expired: cache.is_expired(),
+                username: None,
+                client_id: Some(client_id.clone()),
                 profile: ctx.auth_profile.clone(),
             });
         }
@@ -258,6 +277,7 @@ pub fn status(ctx: &AppContext, out: &Output) -> Result<()> {
                 authenticated: true,
                 expired: false,
                 username: Some(username.clone()),
+                client_id: None,
                 profile: ctx.auth_profile.clone(),
             });
         }
@@ -267,6 +287,7 @@ pub fn status(ctx: &AppContext, out: &Output) -> Result<()> {
                 authenticated: false,
                 expired: false,
                 username: None,
+                client_id: None,
                 profile: ctx.auth_profile.clone(),
             });
         }
@@ -324,7 +345,8 @@ pub enum ResolvedAuth {
 }
 
 /// Resolves auth credentials for the given organization+stage, loading the cache once.
-/// For bearer tokens, automatically refreshes if expired.
+/// Bearer tokens are refreshed when expired; client credentials are exchanged for an
+/// access token when none is cached or it is expired.
 /// Returns `None` if no credentials are stored.
 pub async fn resolve_auth(ctx: &AppContext) -> Result<Option<ResolvedAuth>> {
     let Some(cache) = load_auth_cache(&ctx.config_dir, &ctx.auth_profile)? else {
@@ -332,6 +354,16 @@ pub async fn resolve_auth(ctx: &AppContext) -> Result<Option<ResolvedAuth>> {
     };
 
     match cache {
+        AuthCache::ClientCredentials { .. } => {
+            let token = client_credentials_access_token(
+                &ctx.config_dir,
+                &ctx.auth_profile,
+                workos_config(&ctx.auth_stage).token_url,
+                cache,
+            )
+            .await?;
+            Ok(Some(ResolvedAuth::Bearer(token)))
+        }
         AuthCache::Basic { username, password } => {
             Ok(Some(ResolvedAuth::Basic { username, password }))
         }
@@ -399,6 +431,74 @@ async fn try_refresh(stage: &Stage, refresh_token: &str) -> Result<AuthCache> {
         refresh_token: token.refresh_token,
         expires_at: expires_at_from_duration(token.expires_in),
     })
+}
+
+/// Requests an access token with the OAuth `client_credentials` grant.
+async fn fetch_client_credentials_token(
+    token_url: &str,
+    client_id: &str,
+    client_secret: &str,
+) -> Result<TokenResponse> {
+    let resp = reqwest::Client::new()
+        .post(token_url)
+        .form(&[
+            ("grant_type", "client_credentials"),
+            ("client_id", client_id),
+            ("client_secret", client_secret),
+        ])
+        .send()
+        .await
+        .context("failed to reach WorkOS token endpoint")?;
+
+    let status = resp.status();
+    if !status.is_success() {
+        let body = resp.text().await.unwrap_or_default();
+        bail!("token endpoint returned {}: {}", status, body);
+    }
+    resp.json()
+        .await
+        .context("failed to parse client credentials token response")
+}
+
+/// Returns an access token for a `ClientCredentials` cache. A cached token that is not
+/// within the 60s expiry grace period is reused; otherwise a new one is exchanged and
+/// written back to the profile's auth file alongside the credentials.
+pub async fn client_credentials_access_token(
+    config_dir: &Path,
+    profile: &str,
+    token_url: &str,
+    cache: AuthCache,
+) -> Result<String> {
+    let expired = cache.is_expired();
+    let AuthCache::ClientCredentials {
+        client_id,
+        client_secret,
+        access_token,
+        ..
+    } = cache
+    else {
+        bail!("not a client credentials cache");
+    };
+
+    if let Some(token) = access_token.filter(|_| !expired) {
+        return Ok(token);
+    }
+
+    let token = fetch_client_credentials_token(token_url, &client_id, &client_secret)
+        .await
+        .context("client credentials exchange failed; check `rw config profile auth`")?;
+
+    save_auth_cache(
+        config_dir,
+        profile,
+        &AuthCache::ClientCredentials {
+            client_id,
+            client_secret,
+            access_token: Some(token.access_token.clone()),
+            expires_at: Some(expires_at_from_duration(token.expires_in)),
+        },
+    )?;
+    Ok(token.access_token)
 }
 
 /// Returns the Authorization header value, or fails with a friendly message if
@@ -474,6 +574,7 @@ mod tests {
             authenticated: true,
             expired: false,
             username: None,
+            client_id: None,
             profile: "demo".to_string(),
         };
         let json = serde_json::to_value(&output).unwrap();
@@ -492,6 +593,7 @@ mod tests {
             authenticated: true,
             expired: false,
             username: Some("alice".to_string()),
+            client_id: None,
             profile: "demo".to_string(),
         };
         let json = serde_json::to_value(&output).unwrap();
@@ -506,6 +608,7 @@ mod tests {
             authenticated: false,
             expired: false,
             username: None,
+            client_id: None,
             profile: "demo".to_string(),
         };
         let json = serde_json::to_value(&output).unwrap();
@@ -520,6 +623,7 @@ mod tests {
             authenticated: true,
             expired: false,
             username: None,
+            client_id: None,
             profile: "demo".to_string(),
         };
         assert_eq!(
@@ -535,6 +639,7 @@ mod tests {
             authenticated: true,
             expired: false,
             username: Some("alice".to_string()),
+            client_id: None,
             profile: "demo".to_string(),
         };
         assert_eq!(
@@ -550,6 +655,7 @@ mod tests {
             authenticated: false,
             expired: false,
             username: None,
+            client_id: None,
             profile: "demo".to_string(),
         };
         assert!(output.plain().contains("✗ Not authenticated"));
@@ -680,6 +786,196 @@ mod tests {
         // Also call status directly with a non-JSON output to ensure no panic.
         let out = crate::output::Output { json: false };
         status(&ctx, &out).unwrap();
+    }
+
+    fn cc_cache(token: Option<&str>, expires_at: Option<i64>) -> AuthCache {
+        AuthCache::ClientCredentials {
+            client_id: "id".to_string(),
+            client_secret: "sec".to_string(),
+            access_token: token.map(str::to_string),
+            expires_at,
+        }
+    }
+
+    #[tokio::test]
+    async fn test_client_credentials_fresh_token_skips_exchange() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let mut server = mockito::Server::new_async().await;
+        let mock = server.mock("POST", "/token").expect(0).create_async().await;
+
+        let cache = cc_cache(Some("cached"), Some(expires_at_from_duration(3600)));
+        let token = client_credentials_access_token(
+            dir.path(),
+            "demo",
+            &format!("{}/token", server.url()),
+            cache,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(token, "cached");
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_client_credentials_missing_token_exchanges_and_saves() {
+        use mockito::Matcher;
+        let dir = tempfile::TempDir::new().unwrap();
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("POST", "/token")
+            .match_body(Matcher::AllOf(vec![
+                Matcher::UrlEncoded("grant_type".into(), "client_credentials".into()),
+                Matcher::UrlEncoded("client_id".into(), "id".into()),
+                Matcher::UrlEncoded("client_secret".into(), "sec".into()),
+            ]))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"access_token":"fresh","expires_in":3600}"#)
+            .create_async()
+            .await;
+
+        let token = client_credentials_access_token(
+            dir.path(),
+            "demo",
+            &format!("{}/token", server.url()),
+            cc_cache(None, None),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(token, "fresh");
+        mock.assert_async().await;
+        // Saved back as client credentials (secret retained), not downgraded to Bearer.
+        match load_auth_cache(dir.path(), "demo").unwrap().unwrap() {
+            AuthCache::ClientCredentials {
+                client_id,
+                client_secret,
+                access_token,
+                expires_at,
+            } => {
+                assert_eq!(client_id, "id");
+                assert_eq!(client_secret, "sec");
+                assert_eq!(access_token.as_deref(), Some("fresh"));
+                assert!(expires_at.unwrap() >= expires_at_from_duration(3600) - 5);
+            }
+            other => panic!("expected client credentials, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_client_credentials_expired_token_is_reexchanged() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("POST", "/token")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"access_token":"fresh","expires_in":3600}"#)
+            .create_async()
+            .await;
+
+        // 30s left: inside the 60s grace period.
+        let cache = cc_cache(Some("stale"), Some(expires_at_from_duration(30)));
+        let token = client_credentials_access_token(
+            dir.path(),
+            "demo",
+            &format!("{}/token", server.url()),
+            cache,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(token, "fresh");
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_client_credentials_exchange_failure_reports_body_and_keeps_cache() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("POST", "/token")
+            .with_status(401)
+            .with_body(r#"{"error":"invalid_client"}"#)
+            .create_async()
+            .await;
+
+        let err = client_credentials_access_token(
+            dir.path(),
+            "demo",
+            &format!("{}/token", server.url()),
+            cc_cache(None, None),
+        )
+        .await
+        .unwrap_err();
+
+        let msg = format!("{:#}", err);
+        assert!(msg.contains("401"), "{}", msg);
+        assert!(msg.contains("invalid_client"), "{}", msg);
+        mock.assert_async().await;
+        assert!(load_auth_cache(dir.path(), "demo").unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn test_resolve_auth_client_credentials_fresh_token_is_bearer() {
+        use crate::cli::Stage;
+        use std::collections::BTreeMap;
+
+        let dir = tempfile::TempDir::new().unwrap();
+        save_auth_cache(
+            dir.path(),
+            "demo",
+            &cc_cache(Some("cached"), Some(expires_at_from_duration(3600))),
+        )
+        .unwrap();
+        let ctx = AppContext {
+            config_dir: dir.path().to_path_buf(),
+            profile: "demo".to_string(),
+            auth_profile: "demo".to_string(),
+            stage: Stage::Dev,
+            auth_stage: Stage::Dev,
+            base_url: "http://example".to_string(),
+            defaults: BTreeMap::new(),
+        };
+
+        match resolve_auth(&ctx).await.unwrap() {
+            Some(ResolvedAuth::Bearer(t)) => assert_eq!(t, "cached"),
+            _ => panic!("expected bearer"),
+        }
+    }
+
+    #[test]
+    fn test_status_output_json_client_credentials() {
+        let output = StatusOutput {
+            auth_type: Some("client_credentials".to_string()),
+            authenticated: true,
+            expired: true,
+            username: None,
+            client_id: Some("client_123".to_string()),
+            profile: "demo".to_string(),
+        };
+        let json = serde_json::to_value(&output).unwrap();
+        assert_eq!(json["type"], "client_credentials");
+        assert_eq!(json["client_id"], "client_123");
+        assert!(json.get("client_secret").is_none());
+        assert!(json.get("username").is_none());
+    }
+
+    #[test]
+    fn test_status_output_plain_client_credentials() {
+        let output = StatusOutput {
+            auth_type: Some("client_credentials".to_string()),
+            authenticated: true,
+            expired: false,
+            username: None,
+            client_id: Some("client_123".to_string()),
+            profile: "demo".to_string(),
+        };
+        assert_eq!(
+            output.plain(),
+            "✓ Authenticated using profile 'demo' (client credentials, client: client_123)."
+        );
     }
 
     #[tokio::test]

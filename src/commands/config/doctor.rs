@@ -117,7 +117,7 @@ pub(crate) async fn run_checks(
 
     // 3. API reachability.
     let api = match (&profile_ctx, auth_ok, cache_load.as_ref()) {
-        (Some(ctx), true, Some(Ok(Some(cache)))) => check_api(ctx, cache).await,
+        (Some(ctx), true, Some(Ok(Some(cache)))) => check_api(ctx, cache, config_dir).await,
         _ => skip("api", "auth check failed"),
     };
     checks.push(api);
@@ -138,6 +138,7 @@ pub(crate) async fn run_checks(
 struct ProfileCtx {
     profile: String,
     organization: String,
+    stage: Stage,
     base_url: String,
 }
 
@@ -152,6 +153,7 @@ fn resolve_profile_ctx(
     Some(ProfileCtx {
         profile,
         organization,
+        stage,
         base_url,
     })
 }
@@ -250,6 +252,17 @@ fn check_auth(loaded: &Result<Option<AuthCache>, anyhow::Error>) -> CheckResult 
                 }
             }
         }
+        AuthCache::ClientCredentials { client_id, .. } => {
+            let mut details = BTreeMap::new();
+            details.insert("type".to_string(), serde_json::json!("client_credentials"));
+            details.insert("client_id".to_string(), serde_json::json!(client_id));
+            CheckResult {
+                name: "auth".to_string(),
+                status: CheckStatus::Pass,
+                message: format!("client credentials (client: {})", client_id),
+                details,
+            }
+        }
         AuthCache::Basic { username, .. } => {
             let mut details = BTreeMap::new();
             details.insert("type".to_string(), serde_json::json!("basic"));
@@ -264,7 +277,7 @@ fn check_auth(loaded: &Result<Option<AuthCache>, anyhow::Error>) -> CheckResult 
     }
 }
 
-async fn check_api(ctx: &ProfileCtx, auth: &AuthCache) -> CheckResult {
+async fn check_api(ctx: &ProfileCtx, auth: &AuthCache, config_dir: &Path) -> CheckResult {
     let url = format!("{}/clinicians/me", ctx.base_url.trim_end_matches('/'));
     let client = reqwest::Client::new();
     let mut req = client.get(&url);
@@ -273,6 +286,28 @@ async fn check_api(ctx: &ProfileCtx, auth: &AuthCache) -> CheckResult {
             reqwest::header::AUTHORIZATION,
             format!("Bearer {}", access_token),
         ),
+        AuthCache::ClientCredentials { .. } => {
+            match crate::commands::auth::client_credentials_access_token(
+                config_dir,
+                &ctx.profile,
+                ctx.stage.workos_config().token_url,
+                auth.clone(),
+            )
+            .await
+            {
+                Ok(token) => {
+                    req.header(reqwest::header::AUTHORIZATION, format!("Bearer {}", token))
+                }
+                Err(e) => {
+                    return CheckResult {
+                        name: "api".to_string(),
+                        status: CheckStatus::Fail,
+                        message: format!("could not obtain access token: {:#}", e),
+                        details: BTreeMap::new(),
+                    }
+                }
+            }
+        }
         AuthCache::Basic { username, password } => req.basic_auth(username, Some(password)),
     };
 
@@ -501,6 +536,32 @@ mod tests {
         assert!(!json.contains("\"rt\""));
     }
 
+    #[test]
+    fn test_check_auth_client_credentials_passes() {
+        let r = check_auth(&Ok(Some(AuthCache::ClientCredentials {
+            client_id: "client_123".to_string(),
+            client_secret: "supersecret".to_string(),
+            access_token: None,
+            expires_at: None,
+        })));
+        assert_eq!(r.status, CheckStatus::Pass);
+        assert!(r.message.contains("client credentials"));
+        assert!(r.message.contains("client_123"));
+    }
+
+    #[test]
+    fn test_check_auth_client_credentials_details_omit_secret() {
+        let r = check_auth(&Ok(Some(AuthCache::ClientCredentials {
+            client_id: "client_123".to_string(),
+            client_secret: "supersecret".to_string(),
+            access_token: Some("tok-secret".to_string()),
+            expires_at: Some(unix_now() + 3600),
+        })));
+        let json = serde_json::to_string(&r).unwrap();
+        assert!(!json.contains("supersecret"));
+        assert!(!json.contains("tok-secret"));
+    }
+
     // --- check_defaults ---
 
     #[test]
@@ -545,6 +606,7 @@ mod tests {
         let ctx = ProfileCtx {
             profile: "demo".to_string(),
             organization: "demonstration".to_string(),
+            stage: Stage::Prod,
             base_url: server.url(),
         };
         let auth = AuthCache::Bearer {
@@ -552,7 +614,7 @@ mod tests {
             refresh_token: None,
             expires_at: unix_now() + 3600,
         };
-        let r = check_api(&ctx, &auth).await;
+        let r = check_api(&ctx, &auth, Path::new("/tmp")).await;
         assert_eq!(r.status, CheckStatus::Pass);
         assert!(r.message.contains("200"));
         mock.assert_async().await;
@@ -571,6 +633,7 @@ mod tests {
         let ctx = ProfileCtx {
             profile: "demo".to_string(),
             organization: "demonstration".to_string(),
+            stage: Stage::Prod,
             base_url: server.url(),
         };
         let auth = AuthCache::Bearer {
@@ -578,7 +641,7 @@ mod tests {
             refresh_token: None,
             expires_at: unix_now() + 3600,
         };
-        let r = check_api(&ctx, &auth).await;
+        let r = check_api(&ctx, &auth, Path::new("/tmp")).await;
         assert_eq!(r.status, CheckStatus::Fail);
         assert!(r.message.contains("401"));
         mock.assert_async().await;
@@ -599,13 +662,14 @@ mod tests {
         let ctx = ProfileCtx {
             profile: "demo".to_string(),
             organization: "demonstration".to_string(),
+            stage: Stage::Prod,
             base_url: server.url(),
         };
         let auth = AuthCache::Basic {
             username: "alice".to_string(),
             password: "secret".to_string(),
         };
-        let r = check_api(&ctx, &auth).await;
+        let r = check_api(&ctx, &auth, Path::new("/tmp")).await;
         assert_eq!(r.status, CheckStatus::Pass);
         mock.assert_async().await;
     }
@@ -623,6 +687,7 @@ mod tests {
         let ctx = ProfileCtx {
             profile: "demo".to_string(),
             organization: "demonstration".to_string(),
+            stage: Stage::Prod,
             base_url: format!("http://{}", addr),
         };
         let auth = AuthCache::Bearer {
@@ -630,7 +695,7 @@ mod tests {
             refresh_token: None,
             expires_at: unix_now() + 3600,
         };
-        let r = check_api(&ctx, &auth).await;
+        let r = check_api(&ctx, &auth, Path::new("/tmp")).await;
         assert_eq!(r.status, CheckStatus::Fail);
         assert!(r.message.contains("could not reach"));
     }
