@@ -83,7 +83,8 @@ pub async fn doctor(
 }
 
 /// Run all checks and assemble the report. Pure-ish: side effects are limited
-/// to filesystem reads (auth cache) and one HTTP request.
+/// to filesystem reads (auth cache) and one HTTP request, plus — for client
+/// credentials — a token exchange that writes the new token back to the auth cache.
 pub(crate) async fn run_checks(
     config: &Config,
     config_dir: &Path,

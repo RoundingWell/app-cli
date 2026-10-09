@@ -376,11 +376,12 @@ pub async fn header(ctx: &AppContext, out: &Output) -> Result<()> {
 /// Run `rw auth logout` – remove stored credentials for the profile. Client credentials
 /// are configuration rather than a session, so only the cached access token is dropped.
 pub fn logout(ctx: &AppContext, out: &Output) -> Result<()> {
-    if let Some(AuthCache::ClientCredentials {
+    // An unreadable cache is not an error here: logout must still be able to remove it.
+    if let Ok(Some(AuthCache::ClientCredentials {
         client_id,
         client_secret,
         ..
-    }) = load_auth_cache(&ctx.config_dir, &ctx.profile)?
+    })) = load_auth_cache(&ctx.config_dir, &ctx.profile)
     {
         save_auth_cache(
             &ctx.config_dir,
@@ -1134,6 +1135,18 @@ mod tests {
             }
             other => panic!("expected client credentials, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn test_logout_deletes_malformed_auth_cache() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let path = crate::auth_cache::auth_cache_path(dir.path(), "m2m");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, "not json").unwrap();
+
+        logout(&logout_ctx(dir.path()), &Output { json: false }).unwrap();
+
+        assert!(!path.exists());
     }
 
     #[test]
