@@ -43,6 +43,15 @@ rw config profile list  # List all configured profiles
 rw config profile show  # Show the active profile
 ```
 
+**Non-interactive credentials (client credentials grant):**
+
+```sh
+rw config profile auth <profile> --client-id <id>                       # Secret prompted securely
+rw config profile auth <profile> --client-id <id> --client-secret <s>   # Fully non-interactive
+```
+
+`--client-id` / `--client-secret` cannot be combined with `--username` / `--password`, and with `--json` both are required. `rw` exchanges them for an access token on the first command that needs one and caches it, renewing automatically. `rw auth login` on such a profile forces a fresh exchange instead of opening a browser; `rw auth logout` drops only the cached token and keeps the credentials. A `--client-secret` passed on the command line is visible in shell history and process listings, so prefer the prompt unless the value comes from a secret store.
+
 ### `rw clinicians` — Clinician Management
 
 All targets accept a UUID or email address. Roles accept a UUID or name. Teams accept a UUID or abbreviation.
