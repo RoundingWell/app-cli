@@ -128,10 +128,22 @@ impl CommandOutput for HeaderOutput {
 // --- Command implementations ---
 
 /// Run `rw auth login` – use the OAuth Device Authorization Flow to authenticate
-/// via WorkOS AuthKit, poll for a token, and persist credentials.
+/// via WorkOS AuthKit, poll for a token, and persist credentials. Profiles with
+/// client credentials exchange them instead.
 pub async fn login(ctx: &AppContext, out: &Output) -> Result<()> {
     if out.json {
         anyhow::bail!("`rw auth login` is interactive and cannot be used with --json");
+    }
+
+    if login_with_client_credentials(
+        &ctx.config_dir,
+        &ctx.profile,
+        workos_config(&ctx.auth_stage).token_url,
+        out,
+    )
+    .await?
+    {
+        return Ok(());
     }
 
     let wos = workos_config(&ctx.stage);
@@ -246,6 +258,43 @@ pub async fn login(ctx: &AppContext, out: &Output) -> Result<()> {
             }
         }
     }
+}
+
+/// If the profile holds client credentials, exchanges them for a fresh access token
+/// (even when a cached one is still valid) instead of starting an interactive login,
+/// which would replace the stored secret. Returns `false` when the profile has no
+/// client credentials, leaving the caller to run the device flow.
+async fn login_with_client_credentials(
+    config_dir: &Path,
+    profile: &str,
+    token_url: &str,
+    out: &Output,
+) -> Result<bool> {
+    let Some(AuthCache::ClientCredentials {
+        client_id,
+        client_secret,
+        ..
+    }) = load_auth_cache(config_dir, profile)?
+    else {
+        return Ok(false);
+    };
+
+    // Dropping the cached token forces an exchange.
+    let cache = AuthCache::ClientCredentials {
+        client_id,
+        client_secret,
+        access_token: None,
+        expires_at: None,
+    };
+    client_credentials_access_token(config_dir, profile, token_url, cache).await?;
+
+    out.print(&MessageOutput {
+        message: format!(
+            "✓ Authenticated successfully using client credentials for profile '{}'.",
+            profile
+        ),
+    });
+    Ok(true)
 }
 
 /// Run `rw auth status` – report whether stored credentials exist.
@@ -943,6 +992,83 @@ mod tests {
             Some(ResolvedAuth::Bearer(t)) => assert_eq!(t, "cached"),
             _ => panic!("expected bearer"),
         }
+    }
+
+    #[tokio::test]
+    async fn test_login_with_client_credentials_forces_exchange_and_saves() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("POST", "/token")
+            .expect(1)
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"access_token":"fresh","expires_in":3600}"#)
+            .create_async()
+            .await;
+        // A still-valid cached token must not suppress the exchange on explicit login.
+        save_auth_cache(
+            dir.path(),
+            "m2m",
+            &cc_cache(Some("cached"), Some(expires_at_from_duration(3600))),
+        )
+        .unwrap();
+
+        let out = Output { json: false };
+        let handled = login_with_client_credentials(
+            dir.path(),
+            "m2m",
+            &format!("{}/token", server.url()),
+            &out,
+        )
+        .await
+        .unwrap();
+
+        assert!(handled);
+        mock.assert_async().await;
+        match load_auth_cache(dir.path(), "m2m").unwrap().unwrap() {
+            AuthCache::ClientCredentials {
+                client_secret,
+                access_token,
+                ..
+            } => {
+                assert_eq!(client_secret, "sec");
+                assert_eq!(access_token.as_deref(), Some("fresh"));
+            }
+            other => panic!("expected client credentials, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_login_with_client_credentials_ignores_other_profiles() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let mut server = mockito::Server::new_async().await;
+        let mock = server.mock("POST", "/token").expect(0).create_async().await;
+        let out = Output { json: false };
+        let url = format!("{}/token", server.url());
+
+        // No credentials stored.
+        assert!(
+            !login_with_client_credentials(dir.path(), "demo", &url, &out)
+                .await
+                .unwrap()
+        );
+        // Basic credentials stored.
+        save_auth_cache(
+            dir.path(),
+            "demo",
+            &AuthCache::Basic {
+                username: "alice".to_string(),
+                password: "secret".to_string(),
+            },
+        )
+        .unwrap();
+        assert!(
+            !login_with_client_credentials(dir.path(), "demo", &url, &out)
+                .await
+                .unwrap()
+        );
+        mock.assert_async().await;
     }
 
     #[test]
