@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-10-09
+
+### Added
+
+- Client credentials authentication for non-interactive use: `rw config profile auth <name> --client-id <id> [--client-secret <secret>]` stores credentials that `rw` exchanges for an access token and renews automatically
+
 ## [0.13.0] - 2026-08-06
 
 ### Added
@@ -142,7 +148,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Initial release of the `rw` CLI tool
 
-[Unreleased]: https://github.com/RoundingWell/app-cli/compare/0.13.0...HEAD
+[Unreleased]: https://github.com/RoundingWell/app-cli/compare/0.14.0...HEAD
+[0.14.0]: https://github.com/RoundingWell/app-cli/compare/0.13.0...0.14.0
 [0.13.0]: https://github.com/RoundingWell/app-cli/compare/0.12.0...0.13.0
 [0.12.0]: https://github.com/RoundingWell/app-cli/compare/0.11.0...0.12.0
 [0.11.0]: https://github.com/RoundingWell/app-cli/compare/0.10.1...0.11.0
