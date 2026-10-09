@@ -273,7 +273,7 @@ pub enum ConfigProfileCommands {
     Rm(ConfigProfileRmArgs),
     /// Add a new profile.
     Add(ConfigProfileAddArgs),
-    /// Save basic auth credentials for a profile.
+    /// Save credentials (basic auth or client credentials) for a profile.
     Auth(ConfigProfileAuthArgs),
 }
 
@@ -339,6 +339,12 @@ pub struct ConfigProfileAuthArgs {
     /// Password (prompted securely if not provided).
     #[arg(short = 'P', long)]
     pub password: Option<String>,
+    /// Client ID for the client credentials grant (selects client credentials over basic auth).
+    #[arg(long, conflicts_with_all = ["username", "password"])]
+    pub client_id: Option<String>,
+    /// Client secret for the client credentials grant (prompted securely if not provided).
+    #[arg(long, conflicts_with_all = ["username", "password"])]
+    pub client_secret: Option<String>,
 }
 
 /// Arguments for `config updates`.
@@ -512,6 +518,52 @@ pub struct SkillsInstallArgs {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_profile_auth_client_flags_conflict_with_basic_flags() {
+        use clap::Parser;
+        assert!(Cli::try_parse_from([
+            "rw",
+            "config",
+            "profile",
+            "auth",
+            "demo",
+            "--client-id",
+            "a",
+            "--username",
+            "b",
+        ])
+        .is_err());
+        assert!(Cli::try_parse_from([
+            "rw",
+            "config",
+            "profile",
+            "auth",
+            "demo",
+            "--client-secret",
+            "a",
+            "--password",
+            "b",
+        ])
+        .is_err());
+    }
+
+    #[test]
+    fn test_profile_auth_client_flags_parse() {
+        use clap::Parser;
+        assert!(Cli::try_parse_from([
+            "rw",
+            "config",
+            "profile",
+            "auth",
+            "demo",
+            "--client-id",
+            "a",
+            "--client-secret",
+            "b",
+        ])
+        .is_ok());
+    }
 
     #[test]
     fn test_auth_flag_long() {

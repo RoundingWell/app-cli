@@ -56,3 +56,19 @@ Basic credentials (written using `rw config profile auth <name>`):
   "password": "<plaintext-password>"
 }
 ```
+
+Client credentials (written using `rw config profile auth <name> --client-id … --client-secret …`):
+
+```json
+{
+  "client_id": "<client-id>",
+  "client_secret": "<client-secret>",
+  "access_token": "<jwt>",
+  "expires_at": 1234567890
+}
+```
+
+`access_token` and `expires_at` are absent until the first operation that needs a token (an
+API call, `rw auth login` or `rw config doctor`). `rw` then exchanges the credentials for an
+access token (OAuth `client_credentials` grant) and writes it back here, re-exchanging when
+it is within 60 seconds of expiry. `rw auth logout` removes only the cached token.

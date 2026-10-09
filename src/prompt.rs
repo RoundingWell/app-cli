@@ -127,16 +127,21 @@ pub fn stage() -> Result<Stage> {
     stage_with(std::io::stdin().lock(), std::io::stderr().lock())
 }
 
-/// Reads a password from the terminal without echoing it.
+/// Reads a secret from the terminal without echoing it.
 /// Re-prompts on empty input. Backed by the `rpassword` crate.
-pub fn password() -> Result<String> {
+pub fn secret(label: &str) -> Result<String> {
     loop {
-        let pw = rpassword::prompt_password("Password: ")?;
-        if !pw.is_empty() {
-            return Ok(pw);
+        let value = rpassword::prompt_password(format!("{}: ", label))?;
+        if !value.is_empty() {
+            return Ok(value);
         }
-        eprintln!("Password cannot be empty");
+        eprintln!("{} cannot be empty", label);
     }
+}
+
+/// Reads a password from the terminal without echoing it.
+pub fn password() -> Result<String> {
+    secret("Password")
 }
 
 #[cfg(test)]
