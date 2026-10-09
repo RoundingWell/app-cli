@@ -373,9 +373,32 @@ pub async fn header(ctx: &AppContext, out: &Output) -> Result<()> {
     Ok(())
 }
 
-/// Run `rw auth logout` – remove stored credentials for the profile.
+/// Run `rw auth logout` – remove stored credentials for the profile. Client credentials
+/// are configuration rather than a session, so only the cached access token is dropped.
 pub fn logout(ctx: &AppContext, out: &Output) -> Result<()> {
-    if delete_auth_cache(&ctx.config_dir, &ctx.profile)? {
+    if let Some(AuthCache::ClientCredentials {
+        client_id,
+        client_secret,
+        ..
+    }) = load_auth_cache(&ctx.config_dir, &ctx.profile)?
+    {
+        save_auth_cache(
+            &ctx.config_dir,
+            &ctx.profile,
+            &AuthCache::ClientCredentials {
+                client_id,
+                client_secret,
+                access_token: None,
+                expires_at: None,
+            },
+        )?;
+        out.print(&MessageOutput {
+            message: format!(
+                "✓ Cached access token for profile '{}' removed. Client credentials kept.",
+                ctx.profile
+            ),
+        });
+    } else if delete_auth_cache(&ctx.config_dir, &ctx.profile)? {
         out.print(&MessageOutput {
             message: format!("✓ Credentials for profile '{}' removed.", ctx.profile),
         });
@@ -1069,6 +1092,66 @@ mod tests {
                 .unwrap()
         );
         mock.assert_async().await;
+    }
+
+    fn logout_ctx(dir: &Path) -> AppContext {
+        use crate::cli::Stage;
+        use std::collections::BTreeMap;
+        AppContext {
+            config_dir: dir.to_path_buf(),
+            profile: "m2m".to_string(),
+            auth_profile: "m2m".to_string(),
+            stage: Stage::Dev,
+            auth_stage: Stage::Dev,
+            base_url: "http://example".to_string(),
+            defaults: BTreeMap::new(),
+        }
+    }
+
+    #[test]
+    fn test_logout_client_credentials_keeps_credentials_and_drops_token() {
+        let dir = tempfile::TempDir::new().unwrap();
+        save_auth_cache(
+            dir.path(),
+            "m2m",
+            &cc_cache(Some("cached"), Some(expires_at_from_duration(3600))),
+        )
+        .unwrap();
+
+        logout(&logout_ctx(dir.path()), &Output { json: false }).unwrap();
+
+        match load_auth_cache(dir.path(), "m2m").unwrap().unwrap() {
+            AuthCache::ClientCredentials {
+                client_id,
+                client_secret,
+                access_token,
+                expires_at,
+            } => {
+                assert_eq!(client_id, "id");
+                assert_eq!(client_secret, "sec");
+                assert!(access_token.is_none());
+                assert!(expires_at.is_none());
+            }
+            other => panic!("expected client credentials, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_logout_basic_still_deletes_credentials() {
+        let dir = tempfile::TempDir::new().unwrap();
+        save_auth_cache(
+            dir.path(),
+            "m2m",
+            &AuthCache::Basic {
+                username: "alice".to_string(),
+                password: "secret".to_string(),
+            },
+        )
+        .unwrap();
+
+        logout(&logout_ctx(dir.path()), &Output { json: false }).unwrap();
+
+        assert!(load_auth_cache(dir.path(), "m2m").unwrap().is_none());
     }
 
     #[test]

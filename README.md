@@ -148,8 +148,8 @@ rw config profile auth mercy --client-id client_123 \
 
 `rw` exchanges the credentials for an access token on first use and caches it in
 `~/.config/rw/auth/{profile}.json`, renewing it automatically. `rw auth login` on such a
-profile forces a fresh exchange instead of opening a browser; `rw auth logout` deletes the
-stored client secret.
+profile forces a fresh exchange instead of opening a browser; `rw auth logout` only drops the
+cached access token and keeps the client credentials (use `rw config profile rm` to remove them).
 
 #### Diagnostics
 
@@ -177,7 +177,7 @@ Each check reports `pass`, `warn`, `fail`, `skip`, or `info`. A later check is s
 rw auth login       # Open browser and authenticate via WorkOS (profiles with client credentials exchange them instead)
 rw auth status      # Show authentication status for current profile
 rw auth header      # Show the authentication header for current profile
-rw auth logout      # Remove stored credentials for current profile
+rw auth logout      # Remove stored credentials for current profile (client credentials: cached token only)
 
 # Use a named profile
 rw auth login --profile mercy
