@@ -161,6 +161,10 @@ fn save_cache(path: &Path, cache: &VersionCache) {
 /// version tag from the `Location` header (e.g. `.../releases/tag/0.3.1`
 /// → `"0.3.1"`).
 async fn fetch_latest_version(url: &str) -> Option<String> {
+    if !url.starts_with("https://") {
+        return None;
+    }
+
     let client = reqwest::Client::builder()
         .redirect(redirect::Policy::none())
         .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS))
@@ -332,7 +336,7 @@ mod tests {
         save_cache(&dir.path().join(CACHE_FILE), &cache);
 
         // No server needed — fresh cache should be used directly.
-        let version = latest_version(dir.path(), "http://unused").await.unwrap();
+        let version = latest_version(dir.path(), "https://unused").await.unwrap();
         assert_eq!(version, "9.9.9");
     }
 
