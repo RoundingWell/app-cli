@@ -125,6 +125,17 @@ pub fn do_update() -> anyhow::Result<(String, bool)> {
 /// Returns the latest version string, either from cache or from GitHub.
 /// Returns `None` on any error.
 async fn latest_version(config_dir: &Path, url: &str) -> Option<String> {
+    latest_version_with_fetch(config_dir, url, |url| async move {
+        fetch_latest_version(&url).await
+    })
+    .await
+}
+
+async fn latest_version_with_fetch<F, Fut>(config_dir: &Path, url: &str, fetch: F) -> Option<String>
+where
+    F: FnOnce(String) -> Fut,
+    Fut: std::future::Future<Output = Option<String>>,
+{
     let now = SystemTime::now().duration_since(UNIX_EPOCH).ok()?.as_secs();
 
     let cache_path = config_dir.join(CACHE_FILE);
@@ -137,7 +148,7 @@ async fn latest_version(config_dir: &Path, url: &str) -> Option<String> {
     }
 
     // Fetch from GitHub.
-    let version = fetch_latest_version(url).await?;
+    let version = fetch(url.to_string()).await?;
     let cache = VersionCache {
         checked_at: now,
         latest_version: version.clone(),
@@ -161,6 +172,14 @@ fn save_cache(path: &Path, cache: &VersionCache) {
 /// version tag from the `Location` header (e.g. `.../releases/tag/0.3.1`
 /// → `"0.3.1"`).
 async fn fetch_latest_version(url: &str) -> Option<String> {
+    if !url.starts_with("https://") {
+        return None;
+    }
+
+    fetch_latest_version_from_url(url).await
+}
+
+async fn fetch_latest_version_from_url(url: &str) -> Option<String> {
     let client = reqwest::Client::builder()
         .redirect(redirect::Policy::none())
         .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS))
@@ -284,7 +303,7 @@ mod tests {
             .await;
 
         let url = format!("{}/RoundingWell/app-cli/releases/latest", server.url());
-        let version = fetch_latest_version(&url).await.unwrap();
+        let version = fetch_latest_version_from_url(&url).await.unwrap();
         assert_eq!(version, "0.5.0");
     }
 
@@ -299,8 +318,14 @@ mod tests {
             .await;
 
         let url = format!("{}/RoundingWell/app-cli/releases/latest", server.url());
-        let version = fetch_latest_version(&url).await.unwrap();
+        let version = fetch_latest_version_from_url(&url).await.unwrap();
         assert_eq!(version, "0.5.0");
+    }
+
+    #[tokio::test]
+    async fn test_fetch_latest_version_rejects_http_url() {
+        let url = format!("{}://example.com", "http");
+        assert!(fetch_latest_version(&url).await.is_none());
     }
 
     #[tokio::test]
@@ -313,7 +338,7 @@ mod tests {
             .await;
 
         let url = format!("{}/RoundingWell/app-cli/releases/latest", server.url());
-        assert!(fetch_latest_version(&url).await.is_none());
+        assert!(fetch_latest_version_from_url(&url).await.is_none());
     }
 
     // ── latest_version (cache integration) ──────────────────────────────────
@@ -332,7 +357,7 @@ mod tests {
         save_cache(&dir.path().join(CACHE_FILE), &cache);
 
         // No server needed — fresh cache should be used directly.
-        let version = latest_version(dir.path(), "http://unused").await.unwrap();
+        let version = latest_version(dir.path(), "https://unused").await.unwrap();
         assert_eq!(version, "9.9.9");
     }
 
@@ -355,7 +380,11 @@ mod tests {
             .await;
 
         let url = format!("{}/RoundingWell/app-cli/releases/latest", server.url());
-        let version = latest_version(dir.path(), &url).await.unwrap();
+        let version = latest_version_with_fetch(dir.path(), &url, |url| async move {
+            fetch_latest_version_from_url(&url).await
+        })
+        .await
+        .unwrap();
         assert_eq!(version, "1.0.0");
     }
 
