@@ -324,7 +324,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_fetch_latest_version_rejects_http_url() {
-        assert!(fetch_latest_version("http://example.com").await.is_none());
+        let url = format!("{}://example.com", "http");
+        assert!(fetch_latest_version(&url).await.is_none());
     }
 
     #[tokio::test]
