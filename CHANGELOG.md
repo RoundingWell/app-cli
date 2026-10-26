@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.1] - 2026-10-26
+
+### Fixed
+
+- `rw api -f` request bodies now default to `Content-Type: application/vnd.api+json`, which JSON:API routes require; a `Content-Type` passed with `-H` still wins
+
 ## [0.14.0] - 2026-10-09
 
 ### Added
@@ -148,7 +154,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Initial release of the `rw` CLI tool
 
-[Unreleased]: https://github.com/RoundingWell/app-cli/compare/0.14.0...HEAD
+[Unreleased]: https://github.com/RoundingWell/app-cli/compare/0.14.1...main
+[0.14.1]: https://github.com/RoundingWell/app-cli/compare/0.14.0...0.14.1
 [0.14.0]: https://github.com/RoundingWell/app-cli/compare/0.13.0...0.14.0
 [0.13.0]: https://github.com/RoundingWell/app-cli/compare/0.12.0...0.13.0
 [0.12.0]: https://github.com/RoundingWell/app-cli/compare/0.11.0...0.12.0
