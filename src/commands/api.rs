@@ -1,10 +1,13 @@
 use anyhow::{bail, Context, Result};
 use json_dotpath::DotPaths;
-use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
+use reqwest::header::{HeaderMap, HeaderName, HeaderValue, CONTENT_TYPE};
 
 use crate::cli::ApiArgs;
 use crate::config::AppContext;
 use crate::output::Output;
+
+/// Default media type for `-f` request bodies.
+const JSON_API_MEDIA_TYPE: &str = "application/vnd.api+json";
 
 pub async fn dispatch(args: ApiArgs, ctx: &AppContext, _out: &Output) -> Result<()> {
     run(
@@ -64,13 +67,20 @@ pub async fn run(
         let (name, value) = parse_header(h).with_context(|| format!("invalid header: {:?}", h))?;
         header_map.insert(name, value);
     }
-    req = req.headers(header_map);
-
-    // Parse -f field=value pairs and attach as JSON body.
+    // Parse -f field=value pairs and attach as a JSON:API body. The API
+    // speaks JSON:API, so the default Content-Type is
+    // `application/vnd.api+json`; a Content-Type supplied via -H wins
+    // (header names are case-insensitive). The body is serialized here
+    // because reqwest's `json()` would default to `application/json`.
     if !fields.is_empty() {
-        let body = build_body(fields)?;
-        req = req.json(&body);
+        let body =
+            serde_json::to_vec(&build_body(fields)?).context("failed to serialize request body")?;
+        header_map
+            .entry(CONTENT_TYPE)
+            .or_insert(HeaderValue::from_static(JSON_API_MEDIA_TYPE));
+        req = req.body(body);
     }
+    req = req.headers(header_map);
 
     let resp = req
         .send()
@@ -144,6 +154,94 @@ fn build_body(fields: &[String]) -> Result<serde_json::Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use mockito::{Matcher, Server};
+
+    // --- run / request tests ---
+
+    struct TestAuthGuard {
+        dir: tempfile::TempDir,
+    }
+
+    impl TestAuthGuard {
+        fn new() -> Self {
+            use crate::auth_cache::{save_auth_cache, AuthCache};
+            let dir = tempfile::TempDir::new().unwrap();
+            let cache = AuthCache::Bearer {
+                access_token: "test-token".to_string(),
+                refresh_token: None,
+                expires_at: i64::MAX,
+            };
+            save_auth_cache(dir.path(), "test", &cache).unwrap();
+            TestAuthGuard { dir }
+        }
+
+        fn app_context(&self, base_url: &str) -> AppContext {
+            use crate::cli::Stage;
+            AppContext {
+                config_dir: self.dir.path().to_path_buf(),
+                profile: "test".to_string(),
+                auth_profile: "test".to_string(),
+                stage: Stage::Dev,
+                auth_stage: Stage::Dev,
+                base_url: base_url.to_string(),
+                defaults: std::collections::BTreeMap::new(),
+            }
+        }
+    }
+
+    /// Send `rw api -X PUT clinicians/1 -f attributes.name=Jane` with the
+    /// given -H headers and assert the server saw `expected_content_type`
+    /// alongside the JSON body.
+    async fn assert_put_content_type(headers: &[&str], expected_content_type: &str) {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("PUT", "/clinicians/1")
+            .match_header("content-type", expected_content_type)
+            .match_body(Matcher::Json(
+                serde_json::json!({"attributes": {"name": "Jane"}}),
+            ))
+            .with_status(200)
+            .with_body("{}")
+            .expect(1)
+            .create_async()
+            .await;
+
+        let guard = TestAuthGuard::new();
+        let ctx = guard.app_context(&server.url());
+        let headers: Vec<String> = headers.iter().map(|h| h.to_string()).collect();
+        run(
+            &ctx,
+            "clinicians/1",
+            "PUT",
+            &headers,
+            &["attributes.name=Jane".to_string()],
+            true,
+        )
+        .await
+        .unwrap();
+
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_run_fields_default_content_type_json_api() {
+        assert_put_content_type(&[], "application/vnd.api+json").await;
+    }
+
+    #[tokio::test]
+    async fn test_run_fields_keep_caller_content_type() {
+        assert_put_content_type(&["Content-Type: application/json"], "application/json").await;
+    }
+
+    #[tokio::test]
+    async fn test_run_fields_keep_caller_content_type_any_case() {
+        assert_put_content_type(&["content-TYPE: application/json"], "application/json").await;
+    }
+
+    #[tokio::test]
+    async fn test_run_fields_keep_other_headers_with_default_content_type() {
+        assert_put_content_type(&["Accept: application/json"], "application/vnd.api+json").await;
+    }
 
     // --- build_body / dot-path tests ---
 

@@ -480,7 +480,8 @@ pub struct ApiArgs {
     #[arg(short = 'H', long = "header")]
     pub headers: Vec<String>,
 
-    /// Request body fields as key=value pairs (implies POST if no method set).
+    /// Request body fields as key=value pairs, sent as application/vnd.api+json
+    /// unless -H sets Content-Type (implies POST if no method set).
     #[arg(short = 'f', long = "field")]
     pub fields: Vec<String>,
 
