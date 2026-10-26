@@ -326,11 +326,14 @@ rw workspaces show cardiology --json
 # GET /api/clinicians (default profile)
 rw api clinicians
 
-# POST with JSON body fields using dot-path keys
+# POST with JSON body fields using dot-path keys (sent as Content-Type: application/vnd.api+json)
 rw api clinicians --method POST --field data.attributes.name="Alice Avalon" --field data.attributes.email=alice.avalon@mercy.org --field data.relationships.role.data.type=roles --field data.relationships.role.data.id=<uuid>
 
 # Add extra request headers
 rw api clinicians --header "Accept: application/json"
+
+# Send the --field body as plain JSON instead of JSON:API
+rw api clinicians --method POST --header "Content-Type: application/json" --field data.attributes.name="Alice Avalon"
 
 # Print raw (unpretty) JSON
 rw api clinicians --raw
